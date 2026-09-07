@@ -274,6 +274,8 @@ def resolve_prev_segment_output(
     seg_index: int,
     completed: dict[int, torch.Tensor],
     node_id: str | None,
+    *,
+    allow_without_continuity: bool = False,
 ) -> torch.Tensor | None:
     prev_idx = seg_index - 1
     if prev_idx < 0:
@@ -281,10 +283,14 @@ def resolve_prev_segment_output(
     if prev_idx in completed:
         return completed[prev_idx]
     prev_seg = all_segments[prev_idx]
-    cached = load_segment_cache(node_id, prev_seg, plan)
+    # 续接锚点允许 stale 缓存：尾帧只做视觉锚点（下游 long-edge 缩放），内容即使因
+    # 导出模式/续接开关等全局字段变化被判 stale，帧画面仍可作续接参考（#82）。
+    cached = load_segment_cache(node_id, prev_seg, plan, allow_stale=True)
     if cached is not None:
         return cached
-    if not plan.continuity_enabled:
+    # r2v 自动续接（ref2va 模型）独立于 continuityEnabled：前端对非 fl2v 模式会清零
+    # continuityEnabled，但 r2v 仍需上一段输出作为 ref_video_0，因此放行该场景。
+    if not allow_without_continuity and not plan.continuity_enabled:
         return None
     raise ValueError(
         f"段间连贯：片段 #{seg_index + 1} 需要上一段 #{prev_idx + 1} 的生成结果。"
@@ -1499,6 +1505,36 @@ def continuity_merged_frame_count(plan: DirectorPlan) -> int:
     return int(plan.total_frames)
 
 
+def _guard_merge_memory(chunks: list[torch.Tensor]) -> None:
+    """合并前按实际 chunk 数据量估算输出张量，放不下就抛可操作的中文报错。
+
+    触发条件是「全部导出」合并（默认 float32 / 大输出自适应 float16）。这里用
+    真实 chunk 形状算，比 plan 预估更准；超限立刻提示，而不是裸报
+    DefaultCPUAllocator OOM。
+    """
+    if not chunks:
+        return
+    try:
+        import psutil
+        avail = float(psutil.virtual_memory().available)
+    except Exception:
+        return
+    total = sum(int(c.shape[0]) for c in chunks)
+    if total <= 0:
+        return
+    h, w, ch = int(chunks[0].shape[1]), int(chunks[0].shape[2]), int(chunks[0].shape[3])
+    elem = int(chunks[0].element_size())
+    out_bytes = total * h * w * ch * elem
+    if out_bytes > avail * 0.7:
+        raise RuntimeError(
+            f"合并视频需要约 {out_bytes / (1024 ** 3):.1f} GB 内存"
+            f"（当前剩余约 {avail / (1024 ** 3):.1f} GB），放不下。\n"
+            "解决办法（任选）：① 导出模式改成「分段导出」；② 减少每段时长"
+            "（H3 建议 5–10 秒，勿超 15 秒）；③ 降低画布分辨率；"
+            "④ 用「选择运行」分批生成再手动拼接。"
+        )
+
+
 def concat_continuous_chunks(
     chunks: list[torch.Tensor],
     segments: list[SegmentPlan],
@@ -1512,6 +1548,7 @@ def concat_continuous_chunks(
     del segments
     if not chunks:
         raise ValueError("concat_continuous_chunks: no chunks")
+    _guard_merge_memory(chunks)
     if not getattr(plan, "continuity_enabled", False) or len(chunks) < 2:
         return cat_frames_variable_size(chunks)
     fixed: list[torch.Tensor] = [chunks[0]]

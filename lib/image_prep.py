@@ -7,8 +7,14 @@ from comfy.utils import common_upscale
 
 
 def snap_dimension(value: int, stride: int) -> int:
-    """Round *value* to the nearest multiple of *stride*, keeping at least *stride*."""
-    return max(stride, round(value / stride) * stride)
+    """Round *value* to the nearest multiple of *stride* (half-up), keeping at least *stride*.
+
+    half-up（而非 Python round 的银行家舍入），与前端 ``alignDim`` 的
+    ``Math.round(v / 32) * 32`` 语义一致 —— 避免半格值（如 592/32=18.5）在
+    两端算出不同结果（前端 608 vs 后端 576）导致 UI 显示与实际生成尺寸脱节。
+    """
+    value = int(value)
+    return max(stride, ((value + stride // 2) // stride) * stride)
 
 
 def fit_long_edge(image: torch.Tensor, max_edge: int, stride: int = 16) -> torch.Tensor:
@@ -89,9 +95,14 @@ def resolve_output_dimensions(
     long_edge: int = 848,
     fixed_width: int = 832,
     fixed_height: int = 480,
-    stride: int = 16,
+    stride: int = 32,
 ) -> tuple[int, int, int, str]:
-    """Return (width, height, ref_max_size, mode) for MiniMax H3 Director output."""
+    """Return (width, height, ref_max_size, mode) for MiniMax H3 Director output.
+
+    ``stride`` 默认 32：MiniMax H3 DiT patch_size=(1,2,2) 要求 latent 宽高为
+    偶数（/16 后），即生成宽高必须是 32 的倍数。keyframe 首帧精确按宽高 resize，
+    奇数宽会在 patchify_video 崩溃 —— 统一对齐 32 杜绝该问题。
+    """
     mode = (mode or "long_edge").lower()
     if mode == "fixed":
         w = snap_dimension(int(fixed_width), stride)

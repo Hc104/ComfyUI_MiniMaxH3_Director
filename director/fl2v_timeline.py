@@ -58,18 +58,36 @@ def _image_ref_from_raw(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def _normalize_shots(raw_shots: list | None, *, frame_rate: float = 24.0) -> list[dict[str, Any]]:
-    """Normalize explicit shots[] groups. Skips shots without a start image."""
+def _normalize_shots(
+    raw_shots: list | None,
+    *,
+    frame_rate: float = 24.0,
+    auto_handoff: bool = False,
+) -> list[dict[str, Any]]:
+    """Normalize explicit shots[] groups.
+
+    Skips shots without a start image — unless ``auto_handoff`` is enabled and an
+    earlier shot already provided a start image, in which case the shot is kept as
+    an auto-handoff group (its first frame comes from the previous shot's tail frame
+    at execution time via segment continuity).
+    """
     out: list[dict[str, Any]] = []
     if not raw_shots:
         return out
     cursor = 0
+    saw_start = False
     for i, item in enumerate(raw_shots):
         if not isinstance(item, dict):
             continue
         start = _image_ref_from_raw(item.get("startImage") or item.get("start_image"))
+        auto_start = False
         if start is None:
-            continue
+            if auto_handoff and saw_start:
+                auto_start = True
+            else:
+                continue
+        else:
+            saw_start = True
         end = _image_ref_from_raw(item.get("endImage") or item.get("end_image"))
         try:
             dur = float(item.get("durationSec") or item.get("duration_sec") or DEFAULT_FL2V_DURATION_SEC)
@@ -77,10 +95,11 @@ def _normalize_shots(raw_shots: list | None, *, frame_rate: float = 24.0) -> lis
             dur = DEFAULT_FL2V_DURATION_SEC
         dur = max(0.1, dur)
         fc = max(MIN_FL2V_FRAMES, _duration_to_minimax_frames(dur, frame_rate))
-        out.append(
-            {
-                "source_index": i,
-                "start": {
+        entry: dict[str, Any] = {
+            "source_index": i,
+            "auto_start": auto_start,
+            "start": (
+                {
                     "imageFile": start["imageFile"],
                     "imageB64": start["imageB64"],
                     "width": start["width"],
@@ -88,28 +107,31 @@ def _normalize_shots(raw_shots: list | None, *, frame_rate: float = 24.0) -> lis
                     "start": cursor,
                     "length": fc,
                     "frameCount": fc,
-                },
-                "end": (
-                    {
-                        "imageFile": end["imageFile"],
-                        "imageB64": end["imageB64"],
-                        "width": end["width"],
-                        "height": end["height"],
-                    }
-                    if end is not None
-                    else None
-                ),
-                "frameCount": fc,
-                "timeline_start": cursor,
-                "prompt": (item.get("prompt") or "").strip(),
-                "negativePrompt": (
-                    item.get("negativePrompt")
-                    or item.get("negative_prompt")
-                    or DEFAULT_FL2V_NEGATIVE
-                ).strip()
-                or DEFAULT_FL2V_NEGATIVE,
-            }
-        )
+                }
+                if not auto_start
+                else None
+            ),
+            "end": (
+                {
+                    "imageFile": end["imageFile"],
+                    "imageB64": end["imageB64"],
+                    "width": end["width"],
+                    "height": end["height"],
+                }
+                if end is not None
+                else None
+            ),
+            "frameCount": fc,
+            "timeline_start": cursor,
+            "prompt": (item.get("prompt") or "").strip(),
+            "negativePrompt": (
+                item.get("negativePrompt")
+                or item.get("negative_prompt")
+                or DEFAULT_FL2V_NEGATIVE
+            ).strip()
+            or DEFAULT_FL2V_NEGATIVE,
+        }
+        out.append(entry)
         cursor += fc
     return out
 
@@ -130,6 +152,30 @@ FLF_PROMPT_SUFFIX = (
 )
 I2V_PROMPT_SUFFIX = (
     "完全保持首帧：开头锁定首帧。"
+)
+# Reference-image continuation for auto-handoff shots (no explicit first frame).
+# MiniMax H3 ReferenceToVideo treats the prev-tail frame (ref_image_0 → <Picture 1>)
+# as a soft reference and continues scene content + motion — unlike first_frame
+# which hard-locks frame 0 but resets the motion trajectory.
+REF_CONT_PROMPT_PREFIX = (
+    "延续参考图 <Picture 1>，作为上一镜头的自然续接。"
+    "以参考图为起点，延续其场景、人物、机位与运动趋势，"
+    "保持主体外观、光线与镜头连贯一致，动作衔接流畅不跳变。"
+)
+REF_CONT_PROMPT_SUFFIX = (
+    "延续参考图 <Picture 1>：从参考图状态自然过渡，运动连续。"
+)
+# Reference-video continuation for auto-handoff shots (handoff_mode="video").
+# MiniMax H3 ReferenceToVideo treats the previous full segment (ref_video_0 →
+# <Video 1>, shown at 2 fps with timestamps) as a reference whose motion trajectory
+# is inherited — the strongest continuity mode, at higher VRAM cost.
+REF_VIDEO_CONT_PROMPT_PREFIX = (
+    "延续参考视频 <Video 1>，作为上一镜头的自然续接。"
+    "参考视频是上一镜头的完整画面：延续其场景、人物、机位与运动趋势，"
+    "保持主体外观、光线与镜头连贯一致，动作衔接流畅不跳变，运镜连续。"
+)
+REF_VIDEO_CONT_PROMPT_SUFFIX = (
+    "延续参考视频 <Video 1>：继承其运动轨迹，从参考视频结尾自然过渡。"
 )
 
 # Legacy wraps from earlier builds — strip so re-runs do not stack.
@@ -157,11 +203,11 @@ def _strip_fl2v_wraps(text: str) -> str:
     changed = True
     while changed and text:
         changed = False
-        for p in (FLF_PROMPT_PREFIX, I2V_PROMPT_PREFIX, *_LEGACY_FL2V_WRAPS):
+        for p in (FLF_PROMPT_PREFIX, I2V_PROMPT_PREFIX, REF_CONT_PROMPT_PREFIX, REF_VIDEO_CONT_PROMPT_PREFIX, *_LEGACY_FL2V_WRAPS):
             if text.startswith(p):
                 text = text[len(p) :].strip()
                 changed = True
-        for s in (FLF_PROMPT_SUFFIX, I2V_PROMPT_SUFFIX, *_LEGACY_FL2V_WRAPS):
+        for s in (FLF_PROMPT_SUFFIX, I2V_PROMPT_SUFFIX, REF_CONT_PROMPT_SUFFIX, REF_VIDEO_CONT_PROMPT_SUFFIX, *_LEGACY_FL2V_WRAPS):
             if text.endswith(s):
                 text = text[: -len(s)].strip()
                 changed = True
@@ -222,14 +268,33 @@ def fl2v_prompt_body_only(prompt: str) -> str:
     return text
 
 
-def reinforce_fl2v_prompt(prompt: str, *, has_end_frame: bool) -> str:
+def reinforce_fl2v_prompt(prompt: str, *, has_end_frame: bool, auto_handoff: bool = False, reference_mode: bool = False, video_mode: bool = False) -> str:
     """Ensure first/last-frame hard constraints wrap the (possibly PE-enhanced) prompt.
 
     Hard locks are placed *before* the motion body so they survive token truncation.
+
+    For auto-handoff shots (no explicit start frame):
+    - Default: I2V prefix (not FLF) because FLF assumes an explicit start frame
+    - ``video_mode=True``: use the reference-video continuation prefix
+      (<Video 1> = previous full segment via MiniMaxH3ReferenceToVideo) —
+      strongest continuity, inherits the full motion trajectory
+    - ``reference_mode=True``: use the reference-image continuation prefix
+      (<Picture 1> = prev-tail frame via MiniMaxH3ReferenceToVideo)
+    - <Picture 1> / <Video 1> will be prepended by the caller before this call
     """
     text = fl2v_prompt_body_only(prompt)
-    prefix = FLF_PROMPT_PREFIX if has_end_frame else I2V_PROMPT_PREFIX
-    suffix = FLF_PROMPT_SUFFIX if has_end_frame else I2V_PROMPT_SUFFIX
+    if video_mode:
+        prefix = REF_VIDEO_CONT_PROMPT_PREFIX
+        suffix = REF_VIDEO_CONT_PROMPT_SUFFIX
+    elif reference_mode:
+        prefix = REF_CONT_PROMPT_PREFIX
+        suffix = REF_CONT_PROMPT_SUFFIX
+    elif auto_handoff:
+        prefix = I2V_PROMPT_PREFIX
+        suffix = I2V_PROMPT_SUFFIX
+    else:
+        prefix = FLF_PROMPT_PREFIX if has_end_frame else I2V_PROMPT_PREFIX
+        suffix = FLF_PROMPT_SUFFIX if has_end_frame else I2V_PROMPT_SUFFIX
     if text:
         return f"{prefix}{suffix}中间过程：{text}"
     return f"{prefix}{suffix}"
@@ -300,6 +365,31 @@ def _build_fl2v_endpoint_source(
             )
             end_img = fit_canvas(end_img[:1], w, h)
         clip[-1:] = end_img[:1].to(device=clip.device, dtype=clip.dtype)
+    return clip
+
+
+def _build_fl2v_auto_source(
+    end_img: torch.Tensor | None,
+    frame_count: int,
+    width: int,
+    height: int,
+) -> torch.Tensor:
+    """Source video for an auto-handoff shot (no explicit start image).
+
+    There is no start image to derive from, so we hold the end frame (when present)
+    through the body as the context-encoding source. The actual first frame is
+    overridden by the previous segment's tail at execution time; this clip only
+    supplies correct canvas dims / frame count so context encoding lines up.
+    """
+    from .plan import wan_align_frame_count
+
+    n = wan_align_frame_count(max(MIN_FL2V_FRAMES, int(frame_count)))
+    if end_img is not None and end_img.shape[0] > 0:
+        if end_img.ndim == 3:
+            end_img = end_img.unsqueeze(0)
+        clip = end_img[:1].expand(n, -1, -1, -1).contiguous().clone()
+    else:
+        clip = torch.full((n, height, width, 3), 0.5, dtype=torch.float32)
     return clip
 
 
@@ -477,7 +567,12 @@ def _expand_shots(keyframes: list[dict]) -> list[dict[str, Any]]:
 
 def count_fl2v_runnable_shots(timeline: dict) -> int:
     fps = float(timeline.get("frameRate") or 24)
-    shots = _normalize_shots(timeline.get("shots"), frame_rate=fps)
+    output_block = timeline.get("output") or {}
+    auto_handoff = bool(
+        output_block.get("continuityEnabled") is True
+        or output_block.get("continuity_enabled") is True
+    )
+    shots = _normalize_shots(timeline.get("shots"), frame_rate=fps, auto_handoff=auto_handoff)
     if shots:
         return max(1, len(shots))
     keys = _normalize_keyframes(timeline.get("keyframes") or timeline.get("segments") or [])
@@ -502,6 +597,7 @@ def build_fl2v_director_plan(
         _parse_run_selection,
         _resolve_export_mode,
     )
+    from .segment_continuity import resolve_continuity_settings
 
     global_block = timeline.get("global") or {}
     task_type = global_block.get("taskType") or global_task_type or task_type_option_label(
@@ -512,10 +608,17 @@ def build_fl2v_director_plan(
         raise ValueError(f"fl2v plan builder received task_key={task_key}")
 
     fps = float(timeline.get("frameRate") or frame_rate or 24)
+    output_block = timeline.get("output") or {}
+    auto_handoff = bool(
+        output_block.get("continuityEnabled") is True
+        or output_block.get("continuity_enabled") is True
+    )
     keyframes = _normalize_keyframes(
         timeline.get("keyframes") or timeline.get("segments") or []
     )
-    shots = _normalize_shots(timeline.get("shots"), frame_rate=fps)
+    shots = _normalize_shots(
+        timeline.get("shots"), frame_rate=fps, auto_handoff=auto_handoff
+    )
     used_explicit_shots = bool(shots)
     if not shots:
         if not keyframes:
@@ -528,8 +631,11 @@ def build_fl2v_director_plan(
                 "fl2v: 没有可用的首帧组。请添加一组并上传首帧。"
             )
 
-    # runSelection uses shot indices when shots[] is present; else keyframe indices.
-    run_count = len(timeline.get("shots") or []) if used_explicit_shots else len(keyframes)
+    # runSelection 始终对齐实际生成组数（shots 归一化/展开后的长度）。
+    # 不要用 len(timeline.shots)（无首帧 shot 会被 _normalize_shots 跳过）或 len(keyframes)
+    # （end 帧成对会导致虚高），否则「选择运行」范围会大于实际生成镜头数，造成
+    # UI 显示镜头数量与实际生成数量不一致。
+    run_count = len(shots)
     run_sel = _parse_run_selection(timeline, max(1, run_count))
     if run_sel is not None:
         shots = [s for s in shots if int(s["source_index"]) in run_sel]
@@ -539,11 +645,17 @@ def build_fl2v_director_plan(
                 "请勾选至少一组再执行。"
             )
 
-    output_block = timeline.get("output") or {}
     out_mode = str(output_block.get("mode") or "long_edge").lower()
     if out_mode not in ("fixed", "long_edge"):
         out_mode = "long_edge"
-    first_start = shots[0]["start"]
+    first_start = shots[0].get("start")
+    if first_start is None:
+        # Auto-handoff only applies after a shot that provided an explicit start.
+        # If the very first runnable shot has no start image, we cannot derive one.
+        raise ValueError(
+            "fl2v: 自动续首帧需要至少一个手动上传首帧的镜头作为序列起点。"
+            "请为第一镜（或开启「选择运行」时勾选的第一个镜头）上传首帧图片。"
+        )
     src_w = int(first_start.get("width") or 0)
     src_h = int(first_start.get("height") or 0)
     out_w, out_h, ref_max, out_mode = resolve_output_dimensions(
@@ -580,8 +692,9 @@ def build_fl2v_director_plan(
     source_clips: list[torch.Tensor] = []
     plan_index = 0
     for shot in shots:
-        start_kf = shot["start"]
-        end_kf = shot["end"]
+        start_kf = shot.get("start")
+        end_kf = shot.get("end")
+        auto_start = bool(shot.get("auto_start"))
         start_f = int(shot.get("timeline_start") or 0)
         fc = max(MIN_FL2V_FRAMES, int(shot["frameCount"]))
         user_prompt = (shot.get("prompt") or "").strip() or fallback_prompt
@@ -592,18 +705,8 @@ def build_fl2v_director_plan(
             or DEFAULT_FL2V_NEGATIVE
         )
 
-        start_ref = {
-            "imageFile": start_kf.get("imageFile") or "",
-            "imageB64": start_kf.get("imageB64") or "",
-        }
-        start_img = _fit_image(
-            _load_image_ref(start_ref),
-            width=out_w,
-            height=out_h,
-            output_mode=out_mode,
-            ref_max_size=ref_max,
-        )
-
+        refs: list[SegmentRef] = []
+        source_clip = None
         end_img = None
         if end_kf is not None:
             end_ref = {
@@ -617,15 +720,35 @@ def build_fl2v_director_plan(
                 output_mode=out_mode,
                 ref_max_size=ref_max,
             )
-        start_img, end_img = _unify_fl2v_pair_canvas(start_img, end_img)
-        refs: list[SegmentRef] = [
-            SegmentRef(index=0, tensor=start_img[:1].clone()),
-        ]
-        if end_img is not None:
-            refs.append(SegmentRef(index=1, tensor=end_img[:1].clone()))
 
-        source_clip = _build_fl2v_endpoint_source(start_img, end_img, fc)
-        source_clips.append(source_clip[:1].clone())
+        if start_kf is not None:
+            start_ref = {
+                "imageFile": start_kf.get("imageFile") or "",
+                "imageB64": start_kf.get("imageB64") or "",
+            }
+            start_img = _fit_image(
+                _load_image_ref(start_ref),
+                width=out_w,
+                height=out_h,
+                output_mode=out_mode,
+                ref_max_size=ref_max,
+            )
+            start_img, end_img = _unify_fl2v_pair_canvas(start_img, end_img)
+            refs.append(SegmentRef(index=0, tensor=start_img[:1].clone()))
+            if end_img is not None:
+                refs.append(SegmentRef(index=1, tensor=end_img[:1].clone()))
+            source_clip = _build_fl2v_endpoint_source(start_img, end_img, fc)
+            source_clips.append(source_clip[:1].clone())
+        else:
+            # Auto-handoff shot: no explicit start image. First frame is resolved at
+            # execution time from the previous segment's tail frame (segment continuity).
+            # Only the end image (if any) becomes a fixed ref.
+            if end_img is not None:
+                refs.append(SegmentRef(index=1, tensor=end_img[:1].clone()))
+            # Provide a context source with correct canvas/frame count (held end frame
+            # or neutral gray) — the first frame is overridden by prev_tail at runtime.
+            source_clip = _build_fl2v_auto_source(end_img, fc, out_w, out_h)
+            source_clips.append(source_clip[:1].clone())
 
         end_f = start_f + fc
         segments.append(
@@ -650,6 +773,12 @@ def build_fl2v_director_plan(
         )
 
     source_video = torch.full((len(segments), 16, 16, 3), 0.5, dtype=torch.float32)
+    continuity_enabled, continuity_overlap = resolve_continuity_settings(
+        timeline, segment_count=len(segments)
+    )
+    # 续接方式：output.handoffMode — "video" 从视频续接（ref_video_0=上段整段视频），
+    # 其他（含缺省）一律参考图续接（ref_image_0=上段尾帧）。
+    handoff_mode = "video" if str(output_block.get("handoffMode") or "").lower() == "video" else "image"
     raw = dict(timeline)
     raw["timelineMode"] = "fl2v"
     raw["keyframes"] = keyframes
@@ -674,4 +803,7 @@ def build_fl2v_director_plan(
         raw=raw,
         export_mode=export_mode,
         run_indices=None,
+        continuity_enabled=continuity_enabled,
+        continuity_overlap_frames=continuity_overlap,
+        handoff_mode=handoff_mode,
     )

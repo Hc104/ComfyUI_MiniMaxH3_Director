@@ -5,6 +5,24 @@ from __future__ import annotations
 from ..lib.ref_images import MAX_REFERENCE_IMAGES, REF_IMAGE_KEY_PREFIX, flatten_reference_kwargs
 from ..lib.task_modes import TASK_DESCRIPTIONS, infer_task
 
+# MiniMax H3 DiT patch_size=(1,2,2)：latent 宽高必须为偶数（/16 后），即
+# 生成宽高必须是 32 的倍数。官方节点 width/height 输入也是 step=32。
+# 主 latent 有 pad_to_patch_size 兜底，但 keyframe（ImageToVideo first_frame）
+# 与 reference latent 不做 padding —— 奇数宽直接崩。此处统一对齐，杜绝崩溃。
+H3_ALIGN = 32
+
+
+def _h3_align_dim(value: int) -> int:
+    """Round *value* up/down to the nearest multiple of 32 (half-up, keep ≥32).
+
+    与前端 JS ``Math.round(v / 32) * 32`` 保持一致（half-up），避免两端算出
+    不同的对齐值导致 UI 显示与实际生成尺寸不一致。
+    """
+    v = int(value)
+    if v <= 0:
+        return H3_ALIGN
+    return max(H3_ALIGN, (v + H3_ALIGN // 2) // H3_ALIGN * H3_ALIGN)
+
 
 def _shared_optional_inputs() -> dict:
     return {
@@ -86,11 +104,22 @@ def _reference_videos_dict(ref_videos: dict | None) -> dict | None:
     return out or None
 
 
-def _task_hint(task_key: str, ref_images, ref_videos) -> str:
+def _task_hint(task_key: str, ref_images, ref_videos, first_frame=None, last_frame=None) -> str:
     ref_image_count = len(ref_images or {})
     ref_video_count = len(ref_videos or {})
     mode = infer_task(ref_image_count, ref_video_count)
-    hint = f"{task_key or mode.value} — {TASK_DESCRIPTIONS[mode]} (MiniMax H3)"
+    has_ff = first_frame is not None
+    has_lf = last_frame is not None
+    if has_ff or has_lf:
+        if has_ff and has_lf:
+            mode_label = "First+Last Frame (fl2v keyframe)"
+        elif has_ff:
+            mode_label = "First Frame (i2v keyframe)"
+        else:
+            mode_label = "Last Frame (keyframe)"
+        hint = f"{task_key or mode.value} — {mode_label} (MiniMax H3)"
+    else:
+        hint = f"{task_key or mode.value} — {TASK_DESCRIPTIONS[mode]} (MiniMax H3)"
     if ref_image_count or ref_video_count:
         hint += f" (~{ref_image_count} ref image(s), {ref_video_count} ref video(s))"
     return hint
@@ -115,7 +144,19 @@ def run_minimax_conditioning(
     ref_image_size: str = "match",
     **kwargs,
 ):
-    """Build positive conditioning + AV latent via official MiniMax H3 nodes."""
+    """Build positive conditioning + AV latent via official MiniMax H3 nodes.
+
+    MiniMax H3's first_frame / last_frame are passed straight through to
+    ``MiniMaxH3ImageToVideo`` where they become ``minimax_keyframes`` — the
+    official hard-lock (re-injected every step, never denoised). This is the
+    correct seam mechanism; the AV latent itself is always zeros NestedTensor.
+    """
+    # H3 硬性要求：宽高为 32 的倍数。keyframe 路径会精确按 width×height
+    # resize 首帧再编码，奇数宽会直接让 patchify_video reshape 崩溃。
+    # 在进入官方节点前统一对齐（最终防线，无论前端/其它调用传什么都安全）。
+    width = _h3_align_dim(width)
+    height = _h3_align_dim(height)
+
     MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo = _load_minimax_nodes()
 
     ref_images = ref_images or _reference_images_dict_from_kwargs(kwargs)
@@ -159,7 +200,7 @@ def run_minimax_conditioning(
         )
 
     positive, latent = _unpack_positive_latent(out)
-    hint = _task_hint(task_key, ref_images, ref_videos)
+    hint = _task_hint(task_key, ref_images, ref_videos, first_frame, last_frame)
     return positive, [], latent, hint
 
 

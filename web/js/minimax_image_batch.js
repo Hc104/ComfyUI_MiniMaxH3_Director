@@ -28,7 +28,7 @@ import {
     roundDurationSec,
     sumFrameCounts,
 } from "./minimax_gen_timeline.js";
-import { wirePromptImageMentions } from "./minimax_prompt_mentions.js";
+import { wirePromptImageMentions, attachPromptHighlight } from "./minimax_prompt_mentions.js";
 import { t } from "./minimax_i18n.js";
 
 const _players = new WeakMap();
@@ -39,6 +39,12 @@ let _activeR2vMedia = null;
 
 function clamp(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
+}
+
+/** 阶段 D/架构④：衔接方式四态——auto=自动续接、none=独立镜头(不续接)、ref2va=强制状态驱动、fl2va=强制首尾帧硬锁。 */
+function normalizeContinuityMode(v) {
+    const s = String(v ?? "auto").trim().toLowerCase();
+    return s === "none" || s === "ref2va" || s === "fl2va" ? s : "auto";
 }
 
 export function formatMediaDuration(sec) {
@@ -177,6 +183,8 @@ function flushBatchDurationInputs(editor) {
     for (const input of list.querySelectorAll("input[data-batch-sec-index]")) {
         const index = parseInt(input.getAttribute("data-batch-sec-index"), 10);
         if (!Number.isFinite(index)) continue;
+        // 不提交用户正在编辑的输入框：半截值（如 "3."）会被当完成值提交，导致秒数"自己变"。
+        if (input === document.activeElement) continue;
         clearTimeout(input._t);
         input._t = null;
         const displayed = parseFloat(input.value);
@@ -184,8 +192,7 @@ function flushBatchDurationInputs(editor) {
         const seg = editor.timeline.segments?.[index];
         const current = Number(seg?.durationSec);
         // Skip if already in sync (avoid churn while typing the same committed value).
-        if (seg && Number.isFinite(current) && roundDurationSec(displayed) === roundDurationSec(current)
-            && input !== document.activeElement) {
+        if (seg && Number.isFinite(current) && roundDurationSec(displayed) === roundDurationSec(current)) {
             continue;
         }
         applyBatchSegmentDuration(editor, index, displayed);
@@ -227,6 +234,13 @@ export const IMAGE_BATCH_STYLES = `
 .bd-batch-run-all{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#aaa;cursor:pointer;user-select:none}
 .bd-batch-run-all.hidden{display:none!important}
 .bd-batch-run-all input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#4fff8f}
+/* r2v 自动续接（ref2va 模型）：无参考素材时自动用上一段整段视频续接 */
+.bd-batch-r2v-auto{display:inline-flex;align-items:center;gap:6px;color:#bbb;font-size:11px;background:#161616;border:1px solid #3a3a3a;border-radius:6px;padding:6px 10px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.bd-batch-r2v-auto:hover{border-color:#5a5a5a}
+.bd-batch-r2v-auto.active{border-color:rgba(79,255,143,.55);background:#152018;color:#dfffe9}
+.bd-batch-r2v-auto.hidden{display:none!important}
+.bd-batch-r2v-auto input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#4fff8f;flex-shrink:0}
+.bd-batch-r2v-auto span{line-height:1.3}
 .bd-batch-list{display:flex;flex-direction:column;gap:8px;width:100%;max-height:640px;overflow-y:auto;padding-right:2px}
 .bd-batch-card{background:linear-gradient(165deg,#1a1a1a 0%,#141414 55%,#111 100%);border:1px solid #2c2c2c;border-radius:10px;padding:12px 14px;display:grid;gap:10px;align-items:stretch;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
 /* t2v: 提示词为主，预览收成右侧窄栏 */
@@ -261,6 +275,24 @@ export const IMAGE_BATCH_STYLES = `
 .bd-batch-del{background:transparent;border:1px solid #553;color:#f88;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer}
 .bd-batch-r2v .bd-batch-del{border-radius:8px;padding:5px 10px;font-size:11px;border-color:#4a3030;color:#f0a0a0}
 .bd-batch-del:hover{background:#3a1515}
+.bd-batch-tags{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.bd-batch-tag{display:inline-flex;align-items:center;gap:3px;background:#161616;border:1px solid #333;color:#bbb;border-radius:6px;padding:2px 7px;font-size:10px;line-height:1.2;white-space:nowrap}
+/* P4 三级资产层级：角色标签来源标记——🎬 场景素材组 / 🌐 全局资产库 */
+.bd-batch-tag.from-scene{background:#152a20;border-color:#2f6b4a;color:#aef0c8}
+.bd-batch-tag.from-global{background:#1a1f2e;border-color:#3a4666;color:#b8c6f0}
+.bd-batch-r2v-asset-sel select optgroup{color:#8f8f8f;font-size:10.5px;font-style:normal;background:#141414}
+.bd-batch-r2v-asset-sel select optgroup option{color:#ddd;font-size:10.5px}
+.bd-batch-shot-run{background:#1d3a2c;border:1px solid #2f6b4a;color:#7fffae;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;transition:filter .12s}
+.bd-batch-shot-run:hover{filter:brightness(1.15)}
+/* UI 2.2：单镜 mp4 下载按钮（复用生成钮风格，蓝绿色系区分） */
+.bd-batch-shot-dl{background:#1c2a3a;border:1px solid #2f5b8a;color:#8fc8ff;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;transition:filter .12s}
+.bd-batch-shot-dl:hover:not(:disabled){filter:brightness(1.2)}
+.bd-batch-shot-dl:disabled{opacity:.4;cursor:not-allowed}
+.bd-batch-head .bd-shot-dot{width:8px;height:8px;margin-left:6px;flex:0 0 auto}
+.bd-batch-head .bd-shot-dot.st-success{background:#4fff8f}
+.bd-batch-head .bd-shot-dot.st-running{background:#4da3ff}
+.bd-batch-head .bd-shot-dot.st-review{background:#ffa94d}
+.bd-batch-head .bd-shot-dot.st-failed{background:#ff6b6b}
 .bd-batch-media{display:flex;flex-direction:column;gap:4px;min-width:88px;max-width:120px}
 /* Left = assets (narrower) · Right = prompt + preview (wider) */
 .bd-batch-r2v-body{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(0,1.4fr);gap:12px;width:100%;align-items:stretch}
@@ -357,6 +389,84 @@ export const IMAGE_BATCH_STYLES = `
 .bd-batch-plain .bd-batch-preview,.bd-batch-source .bd-batch-preview,.bd-batch-refs:not(.bd-batch-r2v) .bd-batch-preview{max-width:none;justify-self:stretch;min-height:80px}
 .bd-batch-r2v .bd-batch-refs{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+/* 全局资产库（Phase B）：角色/场景资产自动注入 */
+.bd-batch-r2v-assets{display:inline-flex;align-items:center;gap:6px;color:#bbb;font-size:11px;background:#161616;border:1px solid #3a3a3a;border-radius:6px;padding:6px 10px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.bd-batch-r2v-assets:hover{border-color:#5a5a5a}
+.bd-batch-r2v-assets.active{border-color:rgba(79,255,143,.55);background:#152018;color:#dfffe9}
+.bd-batch-r2v-assets.hidden{display:none!important}
+.bd-batch-r2v-assets input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#4fff8f;flex-shrink:0}
+.bd-batch-r2v-assets span{line-height:1.3}
+.bd-batch-assets{display:flex;flex-direction:column;gap:8px;background:#131313;border:1px solid #2c2c2c;border-radius:10px;padding:10px 12px}
+.bd-batch-assets.hidden{display:none!important}
+.bd-batch-assets-title{color:#eaeaea;font-size:11px;font-weight:700;letter-spacing:.02em;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:6px}
+.bd-batch-assets-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bd-batch-assets-label{color:#bbb;font-size:11px;flex-shrink:0;min-width:44px}
+.bd-batch-assets-items{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:120px}
+.bd-batch-asset{position:relative;width:56px;height:56px;border:1px solid #3a3a3a;border-radius:6px;overflow:hidden;background:#0c0c0c;display:flex;align-items:flex-end;justify-content:center;cursor:default;flex-shrink:0}
+.bd-batch-asset img{width:100%;height:100%;object-fit:cover;display:block}
+.bd-batch-asset .cap{position:absolute;left:0;right:0;bottom:0;font-size:9px;color:#fff;background:rgba(0,0,0,.55);padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;cursor:text}
+.bd-batch-asset .x{position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:15px;text-align:center;font-size:11px;color:#fff;background:rgba(0,0,0,.65);border-radius:50%;cursor:pointer;display:none}
+.bd-batch-asset:hover .x{display:block}
+.bd-batch-asset-rename{position:absolute;left:0;right:0;bottom:0;width:100%;font-size:9px;color:#fff;background:rgba(0,0,0,.8);border:1px solid #4fff8f;border-radius:2px;padding:1px 2px;box-sizing:border-box;z-index:2}
+.bd-batch-assets-def{background:#101010;border:1px solid #3a3a3a;color:#ddd;border-radius:6px;font-size:11px;padding:4px 6px;max-width:130px}
+.bd-batch-assets-add{background:#1c1c1c;border:1px solid #3a3a3a;color:#ccc;border-radius:6px;font-size:11px;padding:5px 9px;cursor:pointer}
+.bd-batch-assets-add:hover{background:#262626;border-color:#5a5a5a}
+.bd-batch-r2v-asset-sel{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bd-batch-r2v-asset-sel-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#bbb}
+.bd-batch-r2v-asset-sel-label{color:#999}
+.bd-batch-r2v-asset-sel-item select{background:#101010;border:1px solid #3a3a3a;color:#ddd;border-radius:6px;font-size:11px;padding:3px 6px;max-width:150px}
+/* 状态跟踪（阶段 C）：工具栏开关 + 每镜状态变更输入框 */
+.bd-batch-r2v-state{display:inline-flex;align-items:center;gap:6px;color:#bbb;font-size:11px;background:#161616;border:1px solid #3a3a3a;border-radius:6px;padding:6px 10px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.bd-batch-r2v-state:hover{border-color:#5a5a5a}
+.bd-batch-r2v-state.active{border-color:rgba(122,160,255,.55);background:#131a26;color:#dbe7ff}
+.bd-batch-r2v-state.hidden{display:none!important}
+.bd-batch-r2v-state input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#7aa0ff;flex-shrink:0}
+.bd-batch-r2v-state-input{display:flex;align-items:center;gap:6px;font-size:11px;color:#9db4e8;margin:6px 0 0;flex-wrap:wrap}
+.bd-batch-r2v-state-input input{flex:1 1 160px;min-width:120px;background:#101010;border:1px solid #2e3a55;color:#dbe7ff;border-radius:6px;font-size:11px;padding:5px 8px;box-sizing:border-box}
+.bd-batch-r2v-state-input input::placeholder{color:#5a6a8a}
+/* 智能尾帧选择（待办④）：工具栏总开关复用状态跟踪样式 */
+.bd-batch-r2v-smarttail{display:inline-flex;align-items:center;gap:6px;color:#bbb;font-size:11px;background:#161616;border:1px solid #3a3a3a;border-radius:6px;padding:6px 10px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.bd-batch-r2v-smarttail:hover{border-color:#5a5a5a}
+.bd-batch-r2v-smarttail.active{border-color:rgba(122,160,255,.55);background:#131a26;color:#dbe7ff}
+.bd-batch-r2v-smarttail.hidden{display:none!important}
+.bd-batch-r2v-smarttail input{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#7aa0ff;flex-shrink:0}
+/* 每段卡片：智能尾帧三态下拉 */
+.bd-batch-r2v-smarttail-sel{display:flex;align-items:center;gap:6px;font-size:11px;color:#9db4e8;margin:6px 0 0}
+.bd-batch-r2v-smarttail-sel select{background:#101010;border:1px solid #2e3a55;color:#dbe7ff;border-radius:6px;font-size:11px;padding:4px 6px;box-sizing:border-box;cursor:pointer}
+.bd-batch-r2v-smarttail-sel select:hover{border-color:#4a6aa0}
+/* 里程碑 B：关键镜头三态下拉（二级一致性检测） */
+.bd-batch-r2v-consistency{display:flex;align-items:center;gap:6px;font-size:11px;color:#9db4e8;margin:6px 0 0}
+.bd-batch-r2v-consistency select{background:#101010;border:1px solid #3a5a3a;color:#dbe7ff;border-radius:6px;font-size:11px;padding:4px 6px;box-sizing:border-box;cursor:pointer}
+.bd-batch-r2v-consistency select:hover{border-color:#5a9a5a}
+/* 阶段 D：每段卡片「衔接模式」三态下拉（auto/ref2va/fl2va） */
+.bd-batch-r2v-continuity{display:flex;align-items:center;gap:6px;font-size:11px;color:#9db4e8;margin:6px 0 0}
+.bd-batch-r2v-continuity select{background:#101010;border:1px solid #2e3a55;color:#dbe7ff;border-radius:6px;font-size:11px;padding:4px 6px;box-sizing:border-box;cursor:pointer}
+.bd-batch-r2v-continuity select:hover{border-color:#4a6aa0}
+.bd-batch-r2v-continuity option{background:#131313}
+/* ——— UI 2.1 P5：衔接徽章 + Prompt 视觉主体（body 右列）——— */
+.bd-batch-cont{display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#14242e,#101822);border:1px solid #2c4a5a;border-radius:10px;padding:6px 10px;flex-wrap:wrap}
+.bd-batch-cont-label{color:#8fd6ea;font-size:11px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.bd-batch-cont-sel{background:#0c151c;border:1px solid #3a5e70;color:#d9ecf5;border-radius:8px;font-size:11.5px;font-weight:600;padding:4px 8px;cursor:pointer;box-sizing:border-box;min-width:0;flex:1 1 auto}
+.bd-batch-cont-sel:hover{border-color:#5d8ca3}
+.bd-batch-cont-sel option{background:#101a22}
+.bd-batch-r2v .bd-batch-prompts.bd-batch-prompts-center{background:#0c0c0c;border:1px solid #26303c;border-radius:10px;padding:10px 12px;gap:6px;flex:1 1 auto;display:flex;flex-direction:column;min-height:200px}
+.bd-batch-r2v .bd-batch-prompts.bd-batch-prompts-center .bd-label{color:#e8f0f8;font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.bd-batch-r2v .bd-batch-prompts.bd-batch-prompts-center textarea{min-height:120px;height:100%;flex:1;resize:vertical;background:#101318;border-color:#2c3644;border-radius:8px;padding:10px;font-size:12.5px;line-height:1.5;color:#eee}
+.bd-batch-r2v .bd-batch-prompts.bd-batch-prompts-center textarea:focus{border-color:#4a7a9a;outline:none}
+/* ——— UI 2.0 第二优先级：镜头设置折叠模块（续接/状态/生成控制）——— */
+.bd-batch-cfg{display:flex;flex-direction:column;gap:0;margin:2px 0 0;width:100%;box-sizing:border-box}
+.bd-batch-cfg-head{display:flex;align-items:center;gap:6px;width:100%;border:1px solid #262626;border-radius:8px;background:#0e0e0e;color:#c6c6c6;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;user-select:none;text-align:left;box-sizing:border-box;transition:border-color .12s,background .12s}
+.bd-batch-cfg-head:hover{border-color:#3a3a3a;background:#141414}
+.bd-batch-cfg-caret{display:inline-flex;color:#7d7d7d;font-size:9px;transition:transform .12s;flex-shrink:0}
+.bd-batch-cfg-head.open .bd-batch-cfg-caret{transform:rotate(90deg)}
+.bd-batch-cfg-summary{margin-left:auto;font-weight:400;color:#7a7a7a;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58%}
+.bd-batch-cfg-body{display:none;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid #1f1f1f;border-top:none;border-radius:0 0 8px 8px;background:#0a0a0a;box-sizing:border-box}
+.bd-batch-cfg-head.open+.bd-batch-cfg-body{display:flex}
+.bd-batch-cfg-group{display:flex;flex-direction:column;gap:3px}
+.bd-batch-cfg-group+.bd-batch-cfg-group{margin-top:4px;padding-top:6px;border-top:1px dashed #242424}
+.bd-batch-cfg-group-title{font-size:10px;font-weight:700;color:#5a6a85;letter-spacing:.04em;margin:0;text-transform:uppercase}
+/* FL2VA 模式：首帧/结束帧槽位强调（区别于普通参考图槽位） */
+.bd-batch-r2v-body .bd-batch-ref .cap.bd-fl2va-cap{color:#f2c94c;font-weight:600}
 `;
 
 const BATCH_CHUNK_SIZE = 8 * 1024 * 1024;
@@ -432,7 +542,48 @@ export function mountImageBatchPanel(root) {
                 <input type="checkbox" data-r="batch-run-all-cb">
                 <span data-i18n="toolbar.selectAll">全选</span>
             </label>
+            <label class="bd-batch-r2v-auto hidden" data-r="batch-r2v-auto" title="${t("tooltip.r2vAutoContinuity")}">
+                <input type="checkbox" data-r="batch-r2v-auto-cb">
+                <span data-i18n="panel.batch.r2vAutoContinuity">自动续接上段</span>
+            </label>
+            <label class="bd-batch-r2v-assets hidden" data-r="batch-r2v-assets" title="${t("tooltip.globalAssets")}">
+                <input type="checkbox" data-r="batch-r2v-assets-cb">
+                <span data-i18n="panel.batch.globalAssets">全局资产库</span>
+            </label>
+            <label class="bd-batch-r2v-state hidden" data-r="batch-r2v-state" title="${t("tooltip.stateTracking")}">
+                <input type="checkbox" data-r="batch-r2v-state-cb">
+                <span data-i18n="panel.batch.stateTracking">状态跟踪</span>
+            </label>
+            <label class="bd-batch-r2v-smarttail hidden" data-r="batch-r2v-smarttail" title="${t("tooltip.smartTail")}">
+                <input type="checkbox" data-r="batch-r2v-smarttail-cb">
+                <span data-i18n="panel.batch.smartTail">智能尾帧</span>
+            </label>
             <span class="bd-meta" data-r="batch-hint" data-i18n="batch.hint.defaultImage">每组生成 1 张图片</span>
+        </div>
+        <div class="bd-batch-assets hidden" data-r="batch-assets-panel">
+            <div class="bd-batch-assets-title" data-i18n="panel.batch.assetsTitle">🌐 全局资产（角色 / 场景 / 道具 / 风格参考）</div>
+            <div class="bd-batch-assets-row">
+                <span class="bd-batch-assets-label" data-i18n="panel.batch.castLabel">角色库</span>
+                <div class="bd-batch-assets-items" data-r="batch-assets-cast"></div>
+                <select class="bd-batch-assets-def" data-r="batch-assets-cast-def" title="${t("tooltip.globalAssetsDefault")}"></select>
+                <button type="button" class="bd-batch-assets-add" data-r="batch-assets-cast-add" data-i18n="panel.batch.addAsset">+ 添加</button>
+            </div>
+            <div class="bd-batch-assets-row">
+                <span class="bd-batch-assets-label" data-i18n="panel.batch.locLabel">场景库</span>
+                <div class="bd-batch-assets-items" data-r="batch-assets-loc"></div>
+                <select class="bd-batch-assets-def" data-r="batch-assets-loc-def" title="${t("tooltip.globalAssetsDefault")}"></select>
+                <button type="button" class="bd-batch-assets-add" data-r="batch-assets-loc-add" data-i18n="panel.batch.addAsset">+ 添加</button>
+            </div>
+            <div class="bd-batch-assets-row">
+                <span class="bd-batch-assets-label" data-i18n="panel.batch.propLabel">道具库</span>
+                <div class="bd-batch-assets-items" data-r="batch-assets-prop"></div>
+                <button type="button" class="bd-batch-assets-add" data-r="batch-assets-prop-add" data-i18n="panel.batch.addAsset">+ 添加</button>
+            </div>
+            <div class="bd-batch-assets-row">
+                <span class="bd-batch-assets-label" data-i18n="panel.batch.styleLabel">风格参考库</span>
+                <div class="bd-batch-assets-items" data-r="batch-assets-style"></div>
+                <button type="button" class="bd-batch-assets-add" data-r="batch-assets-style-add" data-i18n="panel.batch.addAsset">+ 添加</button>
+            </div>
         </div>
         <div class="bd-batch-i2v-notice" data-r="batch-i2v-notice"></div>
         <div class="bd-batch-list" data-r="batch-list"></div>`;
@@ -446,6 +597,25 @@ export function mountImageBatchPanel(root) {
         runSelectBtn: panel.querySelector('[data-a="batch-run-select"]'),
         runSelectAllWrap: panel.querySelector('[data-r="batch-run-all-wrap"]'),
         runSelectAllCb: panel.querySelector('[data-r="batch-run-all-cb"]'),
+        r2vAutoWrap: panel.querySelector('[data-r="batch-r2v-auto"]'),
+        r2vAutoCb: panel.querySelector('[data-r="batch-r2v-auto-cb"]'),
+        r2vAssetsWrap: panel.querySelector('[data-r="batch-r2v-assets"]'),
+        r2vAssetsCb: panel.querySelector('[data-r="batch-r2v-assets-cb"]'),
+        assetsPanel: panel.querySelector('[data-r="batch-assets-panel"]'),
+        assetsCast: panel.querySelector('[data-r="batch-assets-cast"]'),
+        assetsLoc: panel.querySelector('[data-r="batch-assets-loc"]'),
+        assetsCastDef: panel.querySelector('[data-r="batch-assets-cast-def"]'),
+        assetsLocDef: panel.querySelector('[data-r="batch-assets-loc-def"]'),
+        assetsCastAdd: panel.querySelector('[data-r="batch-assets-cast-add"]'),
+        assetsLocAdd: panel.querySelector('[data-r="batch-assets-loc-add"]'),
+        assetsProp: panel.querySelector('[data-r="batch-assets-prop"]'),
+        assetsStyle: panel.querySelector('[data-r="batch-assets-style"]'),
+        assetsPropAdd: panel.querySelector('[data-r="batch-assets-prop-add"]'),
+        assetsStyleAdd: panel.querySelector('[data-r="batch-assets-style-add"]'),
+        stateWrap: panel.querySelector('[data-r="batch-r2v-state"]'),
+        stateCb: panel.querySelector('[data-r="batch-r2v-state-cb"]'),
+        smartTailWrap: panel.querySelector('[data-r="batch-r2v-smarttail"]'),
+        smartTailCb: panel.querySelector('[data-r="batch-r2v-smarttail-cb"]'),
     };
 }
 
@@ -486,6 +656,387 @@ export function migrateGlobalRefsIntoBatchSegments(editor, taskKey) {
         moved = true;
     }
     return moved;
+}
+
+/** ---------- 全局资产库（Phase B）：角色/场景资产自动注入 ---------- */
+
+function sanitizeAssetName(asset) {
+    // 防御旧数据：前端曾误存 "[object File]" 作为资产名（String(File) 的结果）。
+    // 加载/读取时清洗，空名回退 imageFile 文件名。
+    if (!asset || typeof asset !== "object") return asset;
+    const name = asset.name;
+    if (name && name !== "[object File]") return asset;
+    const img = String(asset.imageFile || "").replace(/\\/g, "/").split("/").pop() || "";
+    asset.name = img || "";
+    return asset;
+}
+
+function migrateLocationAssetKey(assetsBlock) {
+    // 资产键统一：只保留 locations（复数）。旧数据 assets.location（单数）迁移到 locations。
+    if (!assetsBlock || typeof assetsBlock !== "object") return assetsBlock;
+    const legacy = assetsBlock.location;
+    if (Array.isArray(legacy)) {
+        if (!Array.isArray(assetsBlock.locations)) {
+            assetsBlock.locations = legacy;
+        } else if (legacy.length) {
+            const ids = new Set(assetsBlock.locations.map((x) => x && x.id).filter(Boolean));
+            for (const item of legacy) {
+                if (item && typeof item === "object" && !(item.id && ids.has(item.id))) {
+                    assetsBlock.locations.push(item);
+                    if (item.id) ids.add(item.id);
+                }
+            }
+        }
+    }
+    delete assetsBlock.location;
+    return assetsBlock;
+}
+
+function getAssetsBlock(editor) {
+    const timeline = editor.timeline || (editor.timeline = {});
+    if (!timeline.assets || typeof timeline.assets !== "object") timeline.assets = {};
+    const a = timeline.assets;
+    // 资产键统一：旧数据 assets.location（单数）→ assets.locations（复数）。
+    migrateLocationAssetKey(a);
+    // 全局资产库升级（待办⑥）：道具 prop / 风格参考 style 类目。
+    // 同时做资产名防御清洗（拒绝 [object File]），防止脏名流入序列化。
+    for (const kind of ["cast", "locations", "props", "styles"]) {
+        if (!Array.isArray(a[kind])) a[kind] = [];
+        a[kind] = a[kind]
+            .filter((x) => x && typeof x === "object")
+            .map(sanitizeAssetName);
+    }
+    if (a.defaultCastId == null) a.defaultCastId = "";
+    if (a.defaultLocationId == null) a.defaultLocationId = "";
+    return a;
+}
+
+function newAssetId() {
+    return "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+async function addGlobalAsset(editor, kind) {
+    pickFile("image/*,.jpg,.jpeg,.png,.webp,.bmp,.gif", async (file) => {
+        try {
+            if (!file?.type?.startsWith("image/") && !/\.(jpe?g|png|webp|bmp|gif)$/i.test(file.name || "")) {
+                throw new Error("Not an image file");
+            }
+            const uploaded = await uploadImage(file);
+            const imageFile = relPath(uploaded);
+            if (!imageFile) throw new Error("Upload returned empty filename");
+            const a = getAssetsBlock(editor);
+            const list = a[kind] || (a[kind] = []);
+            const asset = { id: newAssetId(), name: fileBaseName(file) || file.name || "", imageFile };
+            list.push(asset);
+            if (kind === "cast") {
+                if (!a.defaultCastId) a.defaultCastId = asset.id;
+            } else if (kind === "locations") {
+                if (!a.defaultLocationId) a.defaultLocationId = asset.id;
+            }
+            editor.renderImageBatchGroups?.();
+            editor.commit?.(false, { syncTimeline: true });
+            editor.updateDomWidgetHeight?.();
+        } catch (err) {
+            console.error("[MiniMax H3Director] global asset upload failed:", err);
+            alert(t("upload.alertFailed", { err: err?.message || err }));
+        }
+    });
+}
+
+function removeGlobalAsset(editor, kind, id) {
+    const a = getAssetsBlock(editor);
+    const list = a[kind] || [];
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    list.splice(idx, 1);
+    if (kind === "cast") {
+        if (a.defaultCastId === id) a.defaultCastId = a.cast[0]?.id || "";
+    } else if (kind === "locations") {
+        if (a.defaultLocationId === id) a.defaultLocationId = a.locations[0]?.id || "";
+    }
+    for (const seg of editor.timeline.segments || []) {
+        if (seg.castId === id) seg.castId = "";
+        if (seg.locationId === id) seg.locationId = "";
+    }
+    editor.renderImageBatchGroups?.();
+    editor.commit?.(false, { syncTimeline: true });
+    editor.updateDomWidgetHeight?.();
+}
+
+function renderAssetItem(editor, kind, asset) {
+    const el = document.createElement("div");
+    el.className = "bd-batch-asset";
+    el.title = asset.name || asset.id || "";
+    el.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = viewUrl(asset.imageFile);
+    img.draggable = false;
+    el.appendChild(img);
+    const cap = document.createElement("span");
+    cap.className = "cap";
+    cap.textContent = asset.name || asset.id || "?";
+    cap.title = t("batch.assets.rename");
+    el.appendChild(cap);
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "×";
+    x.title = t("batch.assets.remove");
+    x.onclick = (e) => {
+        e.stopPropagation();
+        removeGlobalAsset(editor, kind, asset.id);
+    };
+    el.appendChild(x);
+    // 改名：点击名称就地编辑，回车/失焦保存。改名即改「提示词命名自动匹配」用的名字。
+    const doRename = () => {
+        const input = document.createElement("input");
+        input.className = "bd-batch-asset-rename";
+        input.value = asset.name || asset.id || "";
+        input.spellcheck = false;
+        const commit = () => {
+            const v = input.value.trim();
+            if (v) asset.name = v;
+            editor.renderImageBatchGroups?.();
+            editor.commit?.(false, { syncTimeline: true });
+            editor.updateDomWidgetHeight?.();
+        };
+        const cancel = () => {
+            input.replaceWith(cap);
+        };
+        input.onkeydown = (e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") { commit(); }
+            else if (e.key === "Escape") { cancel(); }
+        };
+        input.onblur = commit;
+        cap.replaceWith(input);
+        input.focus();
+        input.select();
+    };
+    cap.onclick = (e) => {
+        e.stopPropagation();
+        doRename();
+    };
+    return el;
+}
+
+function fillAssetDefSelect(sel, assets, currentId) {
+    if (!sel) return;
+    sel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = t("batch.assets.noDefault");
+    sel.appendChild(none);
+    for (const asset of assets) {
+        const opt = document.createElement("option");
+        opt.value = asset.id;
+        opt.textContent = asset.name || asset.id;
+        if (asset.id === currentId) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    sel.value = currentId || "";
+}
+
+function renderGlobalAssetsPanel(editor) {
+    const a = getAssetsBlock(editor);
+    const castBox = editor.batchAssetsCast;
+    const locBox = editor.batchAssetsLoc;
+    const propBox = editor.batchAssetsProp;
+    const styleBox = editor.batchAssetsStyle;
+    if (castBox) {
+        castBox.innerHTML = "";
+        for (const asset of a.cast) castBox.appendChild(renderAssetItem(editor, "cast", asset));
+    }
+    if (locBox) {
+        locBox.innerHTML = "";
+        for (const asset of a.locations) locBox.appendChild(renderAssetItem(editor, "locations", asset));
+    }
+    if (propBox) {
+        propBox.innerHTML = "";
+        for (const asset of a.props) propBox.appendChild(renderAssetItem(editor, "props", asset));
+    }
+    if (styleBox) {
+        styleBox.innerHTML = "";
+        for (const asset of a.styles) styleBox.appendChild(renderAssetItem(editor, "styles", asset));
+    }
+    fillAssetDefSelect(editor.batchAssetsCastDef, a.cast, a.defaultCastId);
+    fillAssetDefSelect(editor.batchAssetsLocDef, a.locations, a.defaultLocationId);
+}
+
+/**
+ * P4 三级资产层级：段资产候选池 = 当前场景素材组（优先）→ 全局资产库（兜底）。
+ * 与后端 gen_timeline._scene_asset_pool 同语义（场景优先、id 去重），保证
+ * 「场景素材组里配的角色/场景」在段卡片下拉里可选、可用。
+ * @returns {{scene: object|null, sceneAssets: object[], globalAssets: object[], pool: object[]}}
+ */
+function resolveSegmentAssetPool(editor, seg, kind) {
+    const a = getAssetsBlock(editor);
+    const globalAssets = Array.isArray(a[kind]) ? a[kind] : [];
+    const scenes = editor.timeline?.scenes || [];
+    const scene = scenes.find((s) => s && s.id === seg?.sceneId) || null;
+    const sceneAssets = (scene?.assets && Array.isArray(scene.assets[kind]) ? scene.assets[kind] : []);
+    if (!sceneAssets.length) return { scene, sceneAssets, globalAssets, pool: globalAssets };
+    const seen = new Set();
+    const pool = [];
+    for (const asset of sceneAssets) {
+        if (asset?.id && !seen.has(asset.id)) { seen.add(asset.id); pool.push(asset); }
+    }
+    for (const asset of globalAssets) {
+        if (asset?.id && !seen.has(asset.id)) { seen.add(asset.id); pool.push(asset); }
+    }
+    return { scene, sceneAssets, globalAssets, pool };
+}
+
+function makeSegmentAssetSelect(editor, kind, seg) {
+    const { scene, sceneAssets, globalAssets } = resolveSegmentAssetPool(editor, seg, kind);
+    const current = kind === "cast" ? seg.castId : seg.locationId;
+    const wrap = document.createElement("label");
+    wrap.className = "bd-batch-r2v-asset-sel-item";
+    const label = document.createElement("span");
+    label.className = "bd-batch-r2v-asset-sel-label";
+    label.textContent = kind === "cast" ? t("batch.assets.cast") : t("batch.assets.loc");
+    const sel = document.createElement("select");
+    sel.title = scene
+        ? t("tooltip.assetPoolScene", { scene: scene.name || "" })
+        : t("tooltip.assetPoolGlobal");
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = t("batch.assets.none");
+    sel.appendChild(none);
+    // 🎬 当前场景素材组（优先）。
+    if (sceneAssets.length) {
+        const ogScene = document.createElement("optgroup");
+        ogScene.label = `🎬 ${scene?.name || t("assets.pool.scene")}`;
+        for (const asset of sceneAssets) {
+            const opt = document.createElement("option");
+            opt.value = asset.id;
+            opt.textContent = asset.name || asset.id;
+            if (asset.id === current) opt.selected = true;
+            ogScene.appendChild(opt);
+        }
+        sel.appendChild(ogScene);
+    }
+    // 🌐 全局资产库（兜底，场景已含的 id 去重）。
+    if (globalAssets.length) {
+        const ogGlobal = document.createElement("optgroup");
+        ogGlobal.label = `🌐 ${t("assets.pool.global")}`;
+        for (const asset of globalAssets) {
+            if (sceneAssets.some((s) => s.id === asset.id)) continue;
+            const opt = document.createElement("option");
+            opt.value = asset.id;
+            opt.textContent = asset.name || asset.id;
+            if (asset.id === current) opt.selected = true;
+            ogGlobal.appendChild(opt);
+        }
+        sel.appendChild(ogGlobal);
+    }
+    sel.value = current || "";
+    sel.onchange = () => {
+        if (kind === "cast") {
+            seg.castId = sel.value;
+            seg.castManual = true;
+        } else {
+            seg.locationId = sel.value;
+            seg.locationManual = true;
+        }
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+    };
+    wrap.appendChild(label);
+    wrap.appendChild(sel);
+    return wrap;
+}
+
+/** 架构固底③：本镜生成模式（R2V / FL2V）。
+ *  写 seg.taskType；选「自动」时删字段，跟随全局 task_type + continuity 路由规则。
+ *  后端 gen_timeline 解析：seg_task = taskType || 全局 task_type，continuityMode 可再覆盖。 */
+function normalizeSegmentMode(tt) {
+    const v = String(tt || "").toLowerCase();
+    if (v === "fl2v" || v.includes("fl2v")) return "fl2v";
+    if (v === "r2v" || v.includes("r2v")) return "r2v";
+    return "auto";
+}
+
+function makeSegmentModeSelect(editor, seg) {
+    const wrap = document.createElement("label");
+    wrap.className = "bd-batch-r2v-asset-sel-item";
+    wrap.style.flex = "0 0 auto";
+    const label = document.createElement("span");
+    label.className = "bd-batch-r2v-asset-sel-label";
+    label.textContent = t("shot.mode") || "模式";
+    const sel = document.createElement("select");
+    sel.className = "bd-batch-mode-sel";
+    const opts = [
+        ["auto", t("shot.mode.auto") || "自动"],
+        ["r2v", t("shot.mode.r2v") || "R2V"],
+        ["fl2v", t("shot.mode.fl2v") || "FL2V"],
+    ];
+    const cur = normalizeSegmentMode(seg.taskType);
+    for (const [v, labelText] of opts) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = labelText;
+        if (v === cur) o.selected = true;
+        sel.appendChild(o);
+    }
+    sel.value = cur;
+    sel.onchange = () => {
+        if (sel.value === "auto") delete seg.taskType;
+        else seg.taskType = sel.value;
+        editor.scheduleTimelineSync?.();
+        editor.commit?.(false, { syncTimeline: true });
+        editor.renderImageBatchGroups?.();
+    };
+    wrap.appendChild(label);
+    wrap.appendChild(sel);
+    return wrap;
+}
+/** 写入 seg.sceneId；架构固底①：有场景时本镜必须归属一个场景（无「无场景」空选项），
+ *  只有场景列表为空时才显示「未建场景」占位。段仍可独立导出。 */
+function makeSegmentSceneSelect(editor, seg) {
+    const scenes = editor.timeline.scenes || [];
+    const wrap = document.createElement("label");
+    wrap.className = "bd-batch-r2v-asset-sel-item";
+    wrap.style.flex = "0 0 auto";
+    const label = document.createElement("span");
+    label.className = "bd-batch-r2v-asset-sel-label";
+    label.textContent = t("scene.belong") || "所属场景";
+    const sel = document.createElement("select");
+    const sorted = [...scenes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (!sorted.length) {
+        const none = document.createElement("option");
+        none.value = "";
+        none.textContent = t("scene.noScenes") || "未建场景";
+        sel.appendChild(none);
+    }
+    for (const sc of sorted) {
+        const opt = document.createElement("option");
+        opt.value = sc.id;
+        opt.textContent = sc.name || sc.id;
+        if (sc.id === seg.sceneId) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    // 架构固底①：有场景且本镜尚未归属时，默认归属第一个场景（order 最小），与
+    // ensureShotsInScene 的归一化逻辑一致，避免「无场景」残留。
+    if (sorted.length && !seg.sceneId) seg.sceneId = sorted[0].id;
+    sel.value = seg.sceneId || (sorted[0]?.id || "");
+    sel.onchange = () => {
+        seg.sceneId = sel.value || (sorted[0]?.id || "");
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+    };
+    wrap.appendChild(label);
+    wrap.appendChild(sel);
+    return wrap;
+}
+function autoMatchSegmentAssets(seg, assets) {
+    if (!assets || !assets.length || !seg || typeof seg.prompt !== "string" || !seg.prompt.trim()) return "";
+    const text = seg.prompt;
+    for (const asset of assets) {
+        const name = (asset.name || "").trim();
+        if (name.length < 2) continue;
+        if (text.includes(name)) return asset.id;
+    }
+    return "";
 }
 
 export function ensureImageBatchTimeline(editor) {
@@ -549,7 +1100,54 @@ export function ensureImageBatchTimeline(editor) {
     normalizeImageBatchSegments(editor);
 }
 
+/** 架构固底①：每个 Shot 必须属于一个 Scene。
+ *  scenes 非空时，把 sceneId 为空或指向不存在场景的 segment 自动归入
+ *  order 最小的场景（单场景场景下 = 唯一场景）。返回是否发生变更。
+ *  在 normalizeImageBatchSegments 开头调用，所有 commit 链路统一兜底。 */
+export function ensureShotsInScene(editor) {
+    const scenes = editor.timeline?.scenes;
+    if (!Array.isArray(scenes) || !scenes.length) return false;
+    const sorted = scenes.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const first = sorted[0];
+    if (!first?.id) return false;
+    const validIds = new Set(scenes.map((s) => s.id));
+    const segs = editor.timeline?.segments || [];
+    let changed = false;
+    for (const seg of segs) {
+        if (!seg) continue;
+        if (!seg.sceneId || !validIds.has(seg.sceneId)) {
+            seg.sceneId = first.id;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/** 架构固底②：Scene 资产自动继承给 Shot。
+ *  段未手动指定 castId/locationId 时，自动继承所属场景的 defaultCastId/defaultLocationId；
+ *  已有值或已手动选择（castManual/locationManual=true，含显式"无"）不覆盖（手动优先）。
+ *  无场景归属或场景未设默认时不动作。返回是否发生变更。
+ *  在 normalizeImageBatchSegments 中 ensureShotsInScene 之后调用。 */
+export function inheritSceneAssetsToShots(editor) {
+    const scenes = editor.timeline?.scenes;
+    if (!Array.isArray(scenes) || !scenes.length) return false;
+    const byId = new Map(scenes.filter((s) => s && s.id).map((s) => [s.id, s]));
+    const segs = editor.timeline?.segments || [];
+    let changed = false;
+    for (const seg of segs) {
+        if (!seg) continue;
+        const sc = byId.get(seg.sceneId || "");
+        if (!sc) continue;
+        // 只继承"未选择"的段：castManual=true（含显式选"无"）表示用户已做决定，不得覆盖。
+        if (!seg.castId && !seg.castManual && sc.defaultCastId) { seg.castId = sc.defaultCastId; changed = true; }
+        if (!seg.locationId && !seg.locationManual && sc.defaultLocationId) { seg.locationId = sc.defaultLocationId; changed = true; }
+    }
+    return changed;
+}
+
 export function normalizeImageBatchSegments(editor) {
+    ensureShotsInScene(editor);
+    inheritSceneAssetsToShots(editor);
     const taskKey = resolveTaskKey(editor.getTaskKey?.() || editor.taskTypeWidget?.value);
     const isVideo = isVideoBatchTask(taskKey);
     const defFc = defaultFrameCount(taskKey);
@@ -848,8 +1446,14 @@ function removeSegVideo(editor, index, slot) {
 }
 
 function fileBaseName(path) {
+    // File 对象（或任何带 name 的资产对象）优先取 .name，避免 String(File) === "[object File]"
+    // 污染资产序列化。仅字符串路径走路径切分。
+    if (path && typeof path === "object") {
+        return typeof path.name === "string" && path.name ? path.name : "";
+    }
     const s = String(path || "").replace(/\\/g, "/");
-    return s.split("/").pop() || s;
+    const base = s.split("/").pop() || s;
+    return base === "[object File]" ? "" : base;
 }
 
 function countFilledRefs(seg) {
@@ -1043,6 +1647,12 @@ function renderVideoSlot(el, ref, slot, index, editor, { r2v = false } = {}) {
  * @returns {HTMLElement} main column for prompt/preview
  */
 function appendR2vMediaSections(card, seg, index, editor) {
+    // 阶段 D：衔接模式=fl2va 时，本卡片的「参考图」区语义切换为 FL2VA 首尾帧硬锁输入链：
+    //   slot 0 = 首帧（可选，留空自动取上段末帧）
+    //   slot 1 = 结束帧（可选，留空则仅首帧硬锁）
+    // 其余参考图/视频/音频槽位对 fl2v 路径无意义，隐藏避免混淆。
+    const cmMode = normalizeContinuityMode(seg.continuityMode);
+    const isFl2va = cmMode === "fl2va";
     const counts = countFilledRefs(seg);
     const body = document.createElement("div");
     body.className = "bd-batch-r2v-body";
@@ -1051,11 +1661,12 @@ function appendR2vMediaSections(card, seg, index, editor) {
     assets.className = "bd-batch-r2v-assets";
 
     const imgSection = createR2vSection(
-        t("batch.r2v.sectionPictures"),
-        `${counts.imgs}/${R2V_PICTURE_SLOTS}`,
+        isFl2va ? t("batch.r2v.sectionFl2vaFrames") : t("batch.r2v.sectionPictures"),
+        isFl2va ? "2/2" : `${counts.imgs}/${R2V_PICTURE_SLOTS}`,
     );
     const refs = document.createElement("div");
     refs.className = "bd-batch-refs";
+    const slotCount = isFl2va ? 2 : R2V_PICTURE_SLOTS;
     if (!editor._r2vPicsVisible) editor._r2vPicsVisible = {};
     const segKey = String(seg.id ?? index);
     let highestFilled = -1;
@@ -1077,12 +1688,15 @@ function appendR2vMediaSections(card, seg, index, editor) {
         });
     };
 
-    for (let i = 0; i < R2V_PICTURE_SLOTS; i++) {
+    for (let i = 0; i < slotCount; i++) {
         const ref = (seg.refs || []).find((r) => Number(r.index ?? r.slot) === i);
         const slot = document.createElement("div");
         slot.className = "bd-batch-ref";
-        if (i >= visible) slot.classList.add("bd-r2v-pic-hidden");
-        renderR2vRefSlot(slot, ref, i, index, editor);
+        if (!isFl2va && i >= visible) slot.classList.add("bd-r2v-pic-hidden");
+        const labelOverride = isFl2va
+            ? (i === 0 ? t("batch.r2v.firstFrame") : t("batch.r2v.endFrame"))
+            : undefined;
+        renderR2vRefSlot(slot, ref, i, index, editor, labelOverride);
         slot.onclick = () => {
             if (editor._batchRefDragMoved) {
                 editor._batchRefDragMoved = false;
@@ -1095,78 +1709,83 @@ function appendR2vMediaSections(card, seg, index, editor) {
     }
     imgSection.appendChild(refs);
 
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "bd-r2v-pics-toggle";
-    const syncToggleLabel = () => {
-        if (visible < R2V_PICTURE_SLOTS) {
-            const next = Math.min(R2V_PICTURE_STEP, R2V_PICTURE_SLOTS - visible);
-            toggle.textContent = t("batch.r2v.expandPics", { n: next });
-        } else {
-            toggle.textContent = t("batch.r2v.collapsePics");
-        }
-    };
-    syncToggleLabel();
-    toggle.onclick = (e) => {
-        e.stopPropagation();
-        if (visible < R2V_PICTURE_SLOTS) {
-            visible = Math.min(R2V_PICTURE_SLOTS, visible + R2V_PICTURE_STEP);
-        } else {
-            visible = Math.max(R2V_PICTURE_STEP, minVisible);
-        }
-        editor._r2vPicsVisible[segKey] = visible;
-        applyPicVisibility();
+    if (!isFl2va) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "bd-r2v-pics-toggle";
+        const syncToggleLabel = () => {
+            if (visible < R2V_PICTURE_SLOTS) {
+                const next = Math.min(R2V_PICTURE_STEP, R2V_PICTURE_SLOTS - visible);
+                toggle.textContent = t("batch.r2v.expandPics", { n: next });
+            } else {
+                toggle.textContent = t("batch.r2v.collapsePics");
+            }
+        };
         syncToggleLabel();
-        editor.updateDomWidgetHeight?.();
-    };
-    imgSection.appendChild(toggle);
+        toggle.onclick = (e) => {
+            e.stopPropagation();
+            if (visible < R2V_PICTURE_SLOTS) {
+                visible = Math.min(R2V_PICTURE_SLOTS, visible + R2V_PICTURE_STEP);
+            } else {
+                visible = Math.max(R2V_PICTURE_STEP, minVisible);
+            }
+            editor._r2vPicsVisible[segKey] = visible;
+            applyPicVisibility();
+            syncToggleLabel();
+            editor.updateDomWidgetHeight?.();
+        };
+        imgSection.appendChild(toggle);
+    }
     assets.appendChild(imgSection);
 
-    const videoSection = createR2vSection(
-        t("batch.r2v.sectionVideos"),
-        `${counts.videos}/${MAX_REFERENCE_VIDEOS}`,
-    );
-    const videos = document.createElement("div");
-    videos.className = "bd-batch-videos";
-    for (let i = 0; i < MAX_REFERENCE_VIDEOS; i++) {
-        const ref = (seg.refVideos || []).find((r) => Number(r.index ?? r.slot) === i);
-        const slot = document.createElement("div");
-        renderVideoSlot(slot, ref, i, index, editor, { r2v: true });
-        slot.onclick = (e) => {
-            if (e.target.closest?.(".bd-r2v-play, .bd-r2v-dur, .bd-r2v-progress, .x, video, audio")) return;
-            if (ref && e.target.closest?.(".bd-r2v-thumb")) {
-                slot.querySelector(".bd-r2v-play")?.click();
-                return;
-            }
-            uploadSegVideo(editor, index, i);
-        };
-        videos.appendChild(slot);
-    }
-    videoSection.appendChild(videos);
-    assets.appendChild(videoSection);
+    // FL2VA 模式：参考视频/音频槽位对 fl2v 硬锁路径无意义，隐藏避免混淆。
+    if (!isFl2va) {
+        const videoSection = createR2vSection(
+            t("batch.r2v.sectionVideos"),
+            `${counts.videos}/${MAX_REFERENCE_VIDEOS}`,
+        );
+        const videos = document.createElement("div");
+        videos.className = "bd-batch-videos";
+        for (let i = 0; i < MAX_REFERENCE_VIDEOS; i++) {
+            const ref = (seg.refVideos || []).find((r) => Number(r.index ?? r.slot) === i);
+            const slot = document.createElement("div");
+            renderVideoSlot(slot, ref, i, index, editor, { r2v: true });
+            slot.onclick = (e) => {
+                if (e.target.closest?.(".bd-r2v-play, .bd-r2v-dur, .bd-r2v-progress, .x, video, audio")) return;
+                if (ref && e.target.closest?.(".bd-r2v-thumb")) {
+                    slot.querySelector(".bd-r2v-play")?.click();
+                    return;
+                }
+                uploadSegVideo(editor, index, i);
+            };
+            videos.appendChild(slot);
+        }
+        videoSection.appendChild(videos);
+        assets.appendChild(videoSection);
 
-    const audioSection = createR2vSection(
-        t("batch.r2v.sectionAudios"),
-        `${counts.audios}/${MAX_REFERENCE_AUDIOS}`,
-    );
-    const audios = document.createElement("div");
-    audios.className = "bd-batch-audios";
-    for (let i = 0; i < MAX_REFERENCE_AUDIOS; i++) {
-        const ref = (seg.refAudios || []).find((r) => Number(r.index ?? r.slot) === i);
-        const slot = document.createElement("div");
-        renderAudioSlot(slot, ref, i, index, editor, { r2v: true });
-        slot.onclick = (e) => {
-            if (e.target.closest?.(".bd-r2v-play, .bd-r2v-dur, .bd-r2v-progress, .x, video, audio")) return;
-            if (ref && e.target.closest?.(".bd-r2v-thumb")) {
-                slot.querySelector(".bd-r2v-play")?.click();
-                return;
-            }
-            uploadSegAudio(editor, index, i);
-        };
-        audios.appendChild(slot);
+        const audioSection = createR2vSection(
+            t("batch.r2v.sectionAudios"),
+            `${counts.audios}/${MAX_REFERENCE_AUDIOS}`,
+        );
+        const audios = document.createElement("div");
+        audios.className = "bd-batch-audios";
+        for (let i = 0; i < MAX_REFERENCE_AUDIOS; i++) {
+            const ref = (seg.refAudios || []).find((r) => Number(r.index ?? r.slot) === i);
+            const slot = document.createElement("div");
+            renderAudioSlot(slot, ref, i, index, editor, { r2v: true });
+            slot.onclick = (e) => {
+                if (e.target.closest?.(".bd-r2v-play, .bd-r2v-dur, .bd-r2v-progress, .x, video, audio")) return;
+                if (ref && e.target.closest?.(".bd-r2v-thumb")) {
+                    slot.querySelector(".bd-r2v-play")?.click();
+                    return;
+                }
+                uploadSegAudio(editor, index, i);
+            };
+            audios.appendChild(slot);
+        }
+        audioSection.appendChild(audios);
+        assets.appendChild(audioSection);
     }
-    audioSection.appendChild(audios);
-    assets.appendChild(audioSection);
 
     const main = document.createElement("div");
     main.className = "bd-batch-r2v-main";
@@ -1177,8 +1796,9 @@ function appendR2vMediaSections(card, seg, index, editor) {
     return main;
 }
 
-function renderR2vRefSlot(el, ref, slot, index, editor) {
-    const label = refImageLabel(slot);
+function renderR2vRefSlot(el, ref, slot, index, editor, labelOverride) {
+    const label = labelOverride || refImageLabel(slot);
+    const capClass = `cap${labelOverride ? " bd-fl2va-cap" : ""}`;
     const has = !!ref?.imageFile;
     el.classList.toggle("has-img", has);
     el.innerHTML = "";
@@ -1192,7 +1812,7 @@ function renderR2vRefSlot(el, ref, slot, index, editor) {
         dot.className = "dot";
         el.appendChild(dot);
         const cap = document.createElement("span");
-        cap.className = "cap";
+        cap.className = capClass;
         cap.textContent = label;
         el.appendChild(cap);
         const x = document.createElement("span");
@@ -1202,7 +1822,7 @@ function renderR2vRefSlot(el, ref, slot, index, editor) {
         el.appendChild(x);
     } else {
         const cap = document.createElement("span");
-        cap.className = "cap";
+        cap.className = capClass;
         cap.textContent = label;
         el.appendChild(cap);
     }
@@ -1351,6 +1971,130 @@ function renderPreview(el, seg, running, isVideo, fps) {
     else renderImagePreview(el, seg, running);
 }
 
+/* ---------------------------------------------------------------------------
+ * UI 2.1 P5：Shot 卡片视觉中心——衔接徽章行 + Prompt 大输入区。
+ *
+ * 这两个辅助把「本镜怎么接上一镜」和「本镜拍什么」从卡片深处提到卡片顶部，
+ * 成为镜头的视觉主体；参考素材/预览与低频设置排在它们之后。
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 衔接徽章行：🔗 衔接 + 四态下拉（自动续接 / 独立镜头 / Ref2VA 状态驱动 / FL2VA 首尾帧硬锁）。
+ * 架构固底④：直接写 seg.continuityMode——本镜「怎么接上一镜」独立于生成模式（taskType），
+ * 与「智能尾帧」也是两个独立可单独开关的功能。替代原来收在「镜头设置」折叠里的衔接 select。
+ */
+function buildContinuityStrip(editor, seg) {
+    const strip = document.createElement("div");
+    strip.className = "bd-batch-cont";
+    const label = document.createElement("span");
+    label.className = "bd-batch-cont-label";
+    label.textContent = t("cont.badge");
+    label.title = t("cont.badgeTitle");
+    const sel = document.createElement("select");
+    sel.className = "bd-batch-cont-sel";
+    sel.title = t("cont.badgeTitle");
+    const opts = [
+        ["auto", t("cont.mode.auto")],
+        ["none", t("cont.mode.none")],
+        ["ref2va", t("cont.mode.ref2va")],
+        ["fl2va", t("cont.mode.fl2va")],
+    ];
+    const curCm = normalizeContinuityMode(seg.continuityMode);
+    for (const [v, labelText] of opts) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = labelText;
+        if (v === curCm) o.selected = true;
+        sel.appendChild(o);
+    }
+    sel.onchange = () => {
+        if (sel.value === "auto") delete seg.continuityMode;
+        else seg.continuityMode = sel.value;
+        editor.scheduleTimelineSync?.();
+        editor.commit?.(false, { syncTimeline: true });
+        // 切换 FL2VA 时参考图区语义变为首尾帧槽位，需重渲染卡片。
+        editor.renderImageBatchGroups?.();
+    };
+    strip.appendChild(label);
+    strip.appendChild(sel);
+    return strip;
+}
+
+/**
+ * Prompt 大输入区。r2v 下加 `bd-batch-prompts-center`（卡片顶部全宽视觉主体）。
+ * 事件绑定与旧内联块完全一致：oninput 写 seg.prompt、素材命名高亮 + 引用提示。
+ */
+function createShotPromptBlock(editor, seg, isR2v) {
+    const prompts = document.createElement("div");
+    prompts.className = "bd-batch-prompts" + (isR2v ? " bd-batch-prompts-center" : "");
+    const ph = t(isR2v ? "placeholder.batchR2v" : "placeholder.batchDefault");
+    prompts.innerHTML = `
+        <span class="bd-label">${t("batch.prompt")}</span>
+        <textarea data-f="prompt" placeholder=""></textarea>`;
+    const ta = prompts.querySelector("textarea");
+    ta.placeholder = ph;
+    ta.value = seg.prompt || "";
+    const promptEl = prompts.querySelector('[data-f="prompt"]');
+    promptEl.oninput = (e) => {
+        seg.prompt = e.target.value;
+        seg.negativePrompt = "";
+        editor.scheduleTimelineSync();
+    };
+    if (isR2v) {
+        wirePromptImageMentions(editor, promptEl, () => ({
+            refs: seg.refs || [],
+            audios: seg.refAudios || [],
+            videos: seg.refVideos || [],
+        }));
+        attachPromptHighlight(editor, promptEl, () => ({
+            refs: seg.refs || [],
+            audios: seg.refAudios || [],
+            videos: seg.refVideos || [],
+        }), () => getAssetsBlock(editor));
+    }
+    return prompts;
+}
+
+/**
+ * 下载单镜 mp4（从磁盘缓存编码，后端 GET /minimax/director/segment_mp4）。
+ * 供 r2v 卡片 / fl2v 卡片下载按钮共用。未生成时后端返回 404，短暂提示。
+ */
+export function downloadSegmentMp4(editor, index) {
+    const nodeId = editor?.node?.id;
+    if (nodeId == null || index == null) return;
+    const url = `/minimax/director/segment_mp4?node_id=${encodeURIComponent(String(nodeId))}&index=${encodeURIComponent(String(index))}`;
+    api.fetchApi(url)
+        .then((resp) => {
+            if (!resp.ok) {
+                return resp.json()
+                    .then((d) => { throw new Error((d && d.message) || `HTTP ${resp.status}`); })
+                    .catch((err) => {
+                        if (err instanceof Error) throw err;
+                        throw new Error(`HTTP ${resp.status}`);
+                    });
+            }
+            return resp.blob();
+        })
+        .then((blob) => {
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = `Shot${String(Number(index) + 1).padStart(2, "0")}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
+        })
+        .catch((err) => {
+            console.warn("MiniMax Director 单镜下载失败:", err);
+            // 下载失败要可见（无 toast 体系，用原生 alert 兜底），
+            // 常见原因：缓存被参数改动失效/节点 id 对不上缓存目录。
+            try {
+                window.alert((err && err.message) ? `下载失败：${err.message}` : "下载失败：未知错误");
+            } catch (_) { /* 弹窗失败不致命 */ }
+        });
+}
+
 export function renderImageBatchGroups(editor) {
     const list = editor.batchList;
     if (!list) return;
@@ -1390,10 +2134,71 @@ export function renderImageBatchGroups(editor) {
         // r2v: add from toolbar (left of task select), like fl2v.
         addBtn.classList.toggle("hidden", key === "r2v");
     }
+    // r2v 自动续接开关（ref2va 模型）：仅 r2v 显示，状态存 timeline.output.r2vAutoContinuity。
+    const r2vAutoWrap = editor.batchPanel?.querySelector('[data-r="batch-r2v-auto"]');
+    const r2vAutoCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-auto-cb"]');
+    if (r2vAutoWrap) r2vAutoWrap.classList.toggle("hidden", key !== "r2v");
+    if (r2vAutoCb) {
+        const out = editor.timeline.output || {};
+        // 默认开启：字段缺失（旧工作流/重启后未持久化）视为 true，只有显式 false 才关闭。
+        const raw = out.r2vAutoContinuity ?? out.r2v_auto_continuity ?? true;
+        const on = !(raw === false || (typeof raw === "string" && ["false", "0", "off", "no"].includes(raw.trim().toLowerCase())));
+        r2vAutoCb.checked = on;
+        r2vAutoWrap?.classList.toggle("active", on);
+    }
+    // 全局资产库开关（Phase B）：仅 r2v 显示，状态存 timeline.output.globalAssetsEnabled。
+    const assetsWrap = editor.batchPanel?.querySelector('[data-r="batch-r2v-assets"]');
+    const assetsCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-assets-cb"]');
+    if (assetsWrap) assetsWrap.classList.toggle("hidden", key !== "r2v");
+    if (assetsCb) {
+        const out = editor.timeline.output || {};
+        const raw = out.globalAssetsEnabled ?? out.global_assets_enabled ?? true;
+        const on = !(raw === false || (typeof raw === "string" && ["false", "0", "off", "no"].includes(raw.trim().toLowerCase())));
+        assetsCb.checked = on;
+        assetsWrap?.classList.toggle("active", on);
+    }
+    const assetsPanel = editor.batchAssetsPanel;
+    if (assetsPanel) {
+        const showAssets = key === "r2v" && !!(assetsCb?.checked);
+        assetsPanel.classList.toggle("hidden", !showAssets);
+        if (showAssets) renderGlobalAssetsPanel(editor);
+    }
+    // 状态跟踪开关（阶段 C）：仅 r2v 显示，状态存 timeline.output.stateTrackingEnabled。
+    const stateWrap = editor.batchPanel?.querySelector('[data-r="batch-r2v-state"]');
+    const stateCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-state-cb"]');
+    if (stateWrap) stateWrap.classList.toggle("hidden", key !== "r2v");
+    if (stateCb) {
+        const out = editor.timeline.output || {};
+        const raw = out.stateTrackingEnabled ?? out.state_tracking_enabled ?? true;
+        const on = !(raw === false || (typeof raw === "string" && ["false", "0", "off", "no"].includes(raw.trim().toLowerCase())));
+        stateCb.checked = on;
+        stateWrap?.classList.toggle("active", on);
+    }
+    // 智能尾帧选择总开关（待办④）：仅 r2v 显示，状态存 timeline.output.smartTailEnabled。
+    const smartWrap = editor.batchPanel?.querySelector('[data-r="batch-r2v-smarttail"]');
+    const smartCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-smarttail-cb"]');
+    if (smartWrap) smartWrap.classList.toggle("hidden", key !== "r2v");
+    if (smartCb) {
+        const out = editor.timeline.output || {};
+        const raw = out.smartTailEnabled ?? out.smart_tail_enabled ?? true;
+        const on = !(raw === false || (typeof raw === "string" && ["false", "0", "off", "no"].includes(raw.trim().toLowerCase())));
+        smartCb.checked = on;
+        smartWrap?.classList.toggle("active", on);
+    }
 
     list.innerHTML = "";
     editor.timeline.segments.forEach((seg, index) => {
         const isR2v = key === "r2v";
+        // UI 2.0 第二优先级：镜头设置折叠模块的分组容器（作用域提升到回调级，供后续控制行挂载）。
+        let cfgGroupCont = null;
+        let cfgGroupGen = null;
+        let cfgSummary = null;
+        // UI 2.1 P5：资产选择行 + 镜头设置折叠沉底（先建后挂，等 body 之后再 append，保证
+        // 视觉顺序：标题 → 衔接徽章 → Prompt → 参考素材/预览 → 资产选择 → 折叠设置）。
+        let assetSelRow = null;
+        let cfgWrap = null;
+        // UI 2.1 P5：Prompt 主体（r2v 提前到卡片顶部；非 r2v 保持原 grid 位置）。
+        let prompts = null;
         const card = document.createElement("div");
         const layoutClass = isR2v
             ? "bd-batch-r2v"
@@ -1438,7 +2243,19 @@ export function renderImageBatchGroups(editor) {
             head.appendChild(runCb);
         }
         const title = document.createElement("b");
-        title.textContent = t(isR2v ? "batch.groupTitle.asset" : "batch.groupTitle.prompt", { n: index + 1 });
+        // UI 2.1 P1：镜头卡片标题 = 🎬 Shot N（替代「素材组 N / 提示词组 N」）+ 状态灯。
+        title.textContent = `🎬 ${t("shot.title", { n: String(index + 1).padStart(2, "0") })}`;
+        const segSt = editor._segCacheStatus?.get?.(index);
+        if (segSt) {
+            const sdot = document.createElement("span");
+            sdot.className = "bd-shot-dot";
+            if (segSt === "success") sdot.classList.add("st-success");
+            else if (segSt === "running") sdot.classList.add("st-running");
+            else if (segSt === "review") sdot.classList.add("st-review");
+            else if (segSt === "failed") sdot.classList.add("st-failed");
+            sdot.title = t(`shotStatus.${segSt}`);
+            title.appendChild(sdot);
+        }
         head.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "bd-batch-head-meta";
@@ -1458,11 +2275,15 @@ export function renderImageBatchGroups(editor) {
                 const updated = applyBatchSegmentDuration(editor, index, secInput.value);
                 if (!updated) return;
                 const play = framesToDurationSec(updated.frameCount, 24);
-                secInput.value = String(updated.durationSec);
-                secInput.title = t("batch.durationTooltip", {
-                    frames: updated.frameCount,
-                    play,
-                });
+                // 正在输入时不回写显示值：防抖触发的 applySec 会把半截输入（如 "3."）覆盖成取整值，
+                // 导致秒数框"自己变"。值已在 applyBatchSegmentDuration 里提交，失焦后再同步显示。
+                if (document.activeElement !== secInput) {
+                    secInput.value = String(updated.durationSec);
+                    secInput.title = t("batch.durationTooltip", {
+                        frames: updated.frameCount,
+                        play,
+                    });
+                }
                 editor.scheduleTimelineSync();
                 editor.scheduleRender?.();
                 editor.updateVideoNameLabel?.();
@@ -1484,6 +2305,69 @@ export function renderImageBatchGroups(editor) {
             };
             meta.appendChild(secRow);
         }
+        // UI 2.1 P1：镜头标签（所属场景 / 角色）——一眼看出素材层级归属。
+        const tags = document.createElement("span");
+        tags.className = "bd-batch-tags";
+        // P4 三级资产层级：段资产候选池 = 当前场景素材组优先 → 全局兜底（角色标签来源标记）。
+        const castPool = resolveSegmentAssetPool(editor, seg, "cast");
+        const locPool = resolveSegmentAssetPool(editor, seg, "locations");
+        const scenesBlock = editor.timeline?.scenes || [];
+        const scTag = scenesBlock.find((s) => s.id === seg.sceneId);
+        if (scTag?.name) {
+            const tag = document.createElement("span");
+            tag.className = "bd-batch-tag";
+            tag.textContent = `🎬 ${scTag.name}`;
+            tag.title = t("shot.tagScene");
+            tags.appendChild(tag);
+        }
+        const castInScene = castPool.sceneAssets.find((c) => c.id === seg.castId);
+        const castTag = castInScene || castPool.globalAssets.find((c) => c.id === seg.castId);
+        if (castTag?.name) {
+            const tag = document.createElement("span");
+            tag.className = "bd-batch-tag" + (castInScene ? " from-scene" : " from-global");
+            tag.textContent = `${castInScene ? "🎬" : "🌐"} ${castTag.name}`;
+            tag.title = castInScene
+                ? t("shot.tagCastScene", { scene: castPool.scene?.name || "" })
+                : t("shot.tagCastGlobal");
+            tags.appendChild(tag);
+        }
+        if (tags.children.length) meta.appendChild(tags);
+
+        // UI 2.1 P1：生成本镜按钮（runSelection=[index] → 单镜头生成）。
+        const genShot = document.createElement("button");
+        genShot.type = "button";
+        genShot.className = "bd-batch-shot-run";
+        genShot.textContent = t("shot.generate");
+        genShot.disabled = !editor.supportsRunSelect?.();
+        genShot.onclick = (e) => {
+            e.stopPropagation();
+            editor._genScope = "select";
+            editor.timeline.runSelectEnabled = true;
+            editor.timeline.runSelection = [index];
+            editor.updateGenScopeUI?.();
+            editor.updateRunSelectUI?.();
+            editor.commit?.(true, { syncTimeline: true });
+            if (window.app?.queuePrompt) window.app.queuePrompt(1, "Director");
+        };
+        meta.appendChild(genShot);
+
+        // UI 2.2：下载本镜 mp4（后端从磁盘缓存编码；未生成则禁用）。
+        const dlShot = document.createElement("button");
+        dlShot.type = "button";
+        dlShot.className = "bd-batch-shot-dl";
+        dlShot.textContent = t("shot.download");
+        const cachedSt = editor._segCacheStatus?.get?.(index);
+        const canDl = cachedSt === "success";
+        dlShot.disabled = !canDl;
+        dlShot.title = canDl
+            ? t("tooltip.shotDownload")
+            : t("tooltip.shotDownloadPending");
+        dlShot.onclick = (e) => {
+            e.stopPropagation();
+            downloadSegmentMp4(editor, index);
+        };
+        meta.appendChild(dlShot);
+
         const del = document.createElement("button");
         del.type = "button";
         del.className = "bd-batch-del";
@@ -1493,6 +2377,186 @@ export function renderImageBatchGroups(editor) {
         meta.appendChild(del);
         head.appendChild(meta);
         card.appendChild(head);
+
+        // 全局资产库（Phase B）：每段选择注入哪个角色/场景资产。
+        // 字段缺失（新建段/旧工作流）时回填默认；显式 "" 表示"无"。
+        // P4：默认/自动匹配走「场景素材组优先 → 全局兜底」的合并池。
+        if (isR2v) {
+            // 提示词命名自动匹配：未手动选择过的段，每次渲染按提示词里的资产名自动匹配；
+            // 手动下拉选择过（含选"无"）则尊重手动值，不覆盖。
+            const castDefault = castPool.scene?.defaultCastId || getAssetsBlock(editor).defaultCastId || "";
+            const locDefault = locPool.scene?.defaultLocationId || getAssetsBlock(editor).defaultLocationId || "";
+            if (!seg.castManual) seg.castId = autoMatchSegmentAssets(seg, castPool.pool) || castDefault;
+            if (!seg.locationManual) seg.locationId = autoMatchSegmentAssets(seg, locPool.pool) || locDefault;
+            assetSelRow = document.createElement("div");
+            assetSelRow.className = "bd-batch-r2v-asset-sel";
+            assetSelRow.appendChild(makeSegmentAssetSelect(editor, "cast", seg));
+            assetSelRow.appendChild(makeSegmentAssetSelect(editor, "location", seg));
+            assetSelRow.appendChild(makeSegmentSceneSelect(editor, seg));
+            // 架构固底③：本镜生成模式（R2V / FL2V），per-segment taskType。
+            assetSelRow.appendChild(makeSegmentModeSelect(editor, seg));
+            // P5 修正：资产选择行回到标题下方（常显靠上，先选素材再写词），不沉底。
+            card.appendChild(assetSelRow);
+
+            // UI 2.0 第二优先级：把续接/状态/生成控制收进「镜头设置」折叠模块。
+            // 资产选择（角色/场景/所属场景）留在表面始终可见（高频）；低频控制折叠隐藏。
+            const cfgOpen = !!editor._batchCfgOpen;
+            cfgWrap = document.createElement("div");
+            cfgWrap.className = "bd-batch-cfg";
+            const cfgHead = document.createElement("button");
+            cfgHead.type = "button";
+            cfgHead.className = "bd-batch-cfg-head" + (cfgOpen ? " open" : "");
+            cfgHead.title = t("batch.cfgToggleTitle");
+            const caret = document.createElement("span");
+            caret.className = "bd-batch-cfg-caret";
+            caret.textContent = "▸";
+            const cfgTitle = document.createElement("span");
+            cfgTitle.textContent = t("batch.cfg");
+            const cfgSummaryEl = document.createElement("span");
+            cfgSummaryEl.className = "bd-batch-cfg-summary";
+            cfgSummary = cfgSummaryEl;
+            cfgHead.append(caret, cfgTitle, cfgSummaryEl);
+            cfgHead.onclick = (e) => {
+                e.stopPropagation();
+                editor._batchCfgOpen = !editor._batchCfgOpen;
+                cfgHead.classList.toggle("open", editor._batchCfgOpen);
+            };
+            const cfgBody = document.createElement("div");
+            cfgBody.className = "bd-batch-cfg-body";
+            cfgWrap.appendChild(cfgHead);
+            cfgWrap.appendChild(cfgBody);
+            // P5：折叠模块沉底，等 body 之后再挂到卡片。
+            // 续接组：状态变更（衔接模式已上移到顶部徽章行）。
+            cfgGroupCont = document.createElement("div");
+            cfgGroupCont.className = "bd-batch-cfg-group";
+            const cfgContTitle = document.createElement("div");
+            cfgContTitle.className = "bd-batch-cfg-group-title";
+            cfgContTitle.textContent = t("batch.cfgContinuity");
+            cfgGroupCont.appendChild(cfgContTitle);
+            cfgBody.appendChild(cfgGroupCont);
+            // 生成组：仅剩关键镜头（架构固底④：智能尾帧已迁入「续接设置」组）。
+            cfgGroupGen = document.createElement("div");
+            cfgGroupGen.className = "bd-batch-cfg-group";
+            const cfgGenTitle = document.createElement("div");
+            cfgGenTitle.className = "bd-batch-cfg-group-title";
+            cfgGenTitle.textContent = t("batch.cfgGenerate");
+            cfgGroupGen.appendChild(cfgGenTitle);
+            cfgBody.appendChild(cfgGroupGen);
+            // 折叠头摘要：两个独立功能各自的状态——🔗 衔接方式 + 🎯 智能尾帧。
+            if (cfgSummary) {
+                const curCm2 = normalizeContinuityMode(seg.continuityMode);
+                const cmLabelMap = { auto: t("cont.mode.auto"), none: t("cont.mode.none"), ref2va: t("cont.mode.ref2va"), fl2va: t("cont.mode.fl2va") };
+                const stIsAuto = seg.smartTail === undefined || seg.smartTail === "" || seg.smartTail === null;
+                const stVal = stIsAuto
+                    ? t("batch.smartTailAuto")
+                    : (String(seg.smartTail) === "true" || seg.smartTail === true ? t("batch.smartTailOn") : t("batch.smartTailOff"));
+                cfgSummary.textContent = `${t("batch.cfgSummaryCont")} ${cmLabelMap[curCm2] || curCm2} · ${t("batch.cfgSummaryTail")} ${stVal}`;
+            }
+        } else {
+            // 非 r2v 镜头也可归属场景（Scene Manager 导出按场景分组）。
+            const sceneSelRow = document.createElement("div");
+            sceneSelRow.className = "bd-batch-r2v-asset-sel";
+            sceneSelRow.appendChild(makeSegmentSceneSelect(editor, seg));
+            card.appendChild(sceneSelRow);
+        }
+
+        // 状态跟踪（阶段 C）：每镜可填「状态变更」——本镜结束时应落地的关键状态
+        // （动作/地点/时间/情绪），系统拼进下一镜 prompt 前。不填则只靠参考图续接。
+        if (isR2v) {
+            const stateRow = document.createElement("label");
+            stateRow.className = "bd-batch-r2v-state-input";
+            const stateLabel = document.createElement("span");
+            stateLabel.textContent = t("batch.stateChange");
+            const stateInput = document.createElement("input");
+            stateInput.type = "text";
+            stateInput.placeholder = t("batch.stateChangePh");
+            stateInput.value = seg.stateChange || "";
+            stateInput.oninput = (e) => {
+                seg.stateChange = e.target.value;
+                editor.scheduleTimelineSync?.();
+            };
+            stateInput.onchange = () => {
+                editor.commit?.(false, { syncTimeline: true });
+            };
+            stateRow.appendChild(stateLabel);
+            stateRow.appendChild(stateInput);
+            if (cfgGroupCont) cfgGroupCont.appendChild(stateRow);
+            else card.appendChild(stateRow);
+        }
+
+        // 智能尾帧选择（待办④ / 架构固底④）：每段三态覆盖——跟随全局 / 强制开启 / 强制关闭。
+        // 存 seg.smartTail：undefined=跟随全局（不进 payload）、true/false=强制覆盖。
+        // 架构固底④：智能尾帧是独立于「镜头衔接」的第二个续接功能，放「续接设置」组单独开关。
+        if (isR2v) {
+            const stRow = document.createElement("label");
+            stRow.className = "bd-batch-r2v-smarttail-sel";
+            const stLabel = document.createElement("span");
+            stLabel.textContent = t("batch.smartTail");
+            const stSel = document.createElement("select");
+            const stOpts = [
+                ["auto", t("batch.smartTailAuto")],
+                ["on", t("batch.smartTailOn")],
+                ["off", t("batch.smartTailOff")],
+            ];
+            const cur = seg.smartTail === undefined || seg.smartTail === "" || seg.smartTail === null
+                ? "auto"
+                : (String(seg.smartTail) === "true" || seg.smartTail === true ? "on" : "off");
+            for (const [v, label] of stOpts) {
+                const o = document.createElement("option");
+                o.value = v;
+                o.textContent = label;
+                if (v === cur) o.selected = true;
+                stSel.appendChild(o);
+            }
+            stSel.onchange = () => {
+                if (stSel.value === "auto") delete seg.smartTail;
+                else seg.smartTail = stSel.value === "on";
+                editor.scheduleTimelineSync?.();
+                editor.commit?.(false, { syncTimeline: true });
+            };
+            stRow.appendChild(stLabel);
+            stRow.appendChild(stSel);
+            // 架构固底④：智能尾帧迁入「续接设置」组（cfgGroupCont），与状态变更并列，
+            // 与「镜头衔接」徽章、生成模式（taskType）完全独立。
+            if (cfgGroupCont) cfgGroupCont.appendChild(stRow);
+            else card.appendChild(stRow);
+        }
+
+        // 里程碑 B：关键镜头标记（二级一致性检测）——三态覆盖：跟随自动 / 强制 / 跳过。
+        // 自动=有角色/场景资产注入即检测（后端判定）；手动可加（强制）/减（跳过）。
+        // 存 seg.consistencyCheck：undefined/"auto"=自动、true=强制、false=跳过。
+        if (isR2v) {
+            const ckRow = document.createElement("label");
+            ckRow.className = "bd-batch-r2v-consistency";
+            const ckLabel = document.createElement("span");
+            ckLabel.textContent = t("batch.consistencyCheck");
+            const ckSel = document.createElement("select");
+            const ckOpts = [
+                ["auto", t("batch.consistencyAuto")],
+                ["on", t("batch.consistencyOn")],
+                ["off", t("batch.consistencyOff")],
+            ];
+            const curCk = (seg.consistencyCheck === undefined || seg.consistencyCheck === "" || seg.consistencyCheck === null || seg.consistencyCheck === "auto")
+                ? "auto"
+                : (String(seg.consistencyCheck) === "true" || seg.consistencyCheck === true ? "on" : "off");
+            for (const [v, label] of ckOpts) {
+                const o = document.createElement("option");
+                o.value = v;
+                o.textContent = label;
+                if (v === curCk) o.selected = true;
+                ckSel.appendChild(o);
+            }
+            ckSel.onchange = () => {
+                if (ckSel.value === "auto") delete seg.consistencyCheck;
+                else seg.consistencyCheck = ckSel.value === "on";
+                editor.scheduleTimelineSync?.();
+                editor.commit?.(false, { syncTimeline: true });
+            };
+            ckRow.appendChild(ckLabel);
+            ckRow.appendChild(ckSel);
+            if (cfgGroupGen) cfgGroupGen.appendChild(ckRow);
+            else card.appendChild(ckRow);
+        }
 
         if (variant === "source") {
             const media = document.createElement("div");
@@ -1531,38 +2595,27 @@ export function renderImageBatchGroups(editor) {
             card.appendChild(media);
         }
 
-        const prompts = document.createElement("div");
-        prompts.className = "bd-batch-prompts";
-        const ph = t(isR2v ? "placeholder.batchR2v" : "placeholder.batchDefault");
-        prompts.innerHTML = `
-            <span class="bd-label">${t("batch.prompt")}</span>
-            <textarea data-f="prompt" placeholder=""></textarea>`;
-        prompts.querySelector("textarea").placeholder = ph;
-        prompts.querySelector("textarea").value = seg.prompt || "";
-        const promptEl = prompts.querySelector('[data-f="prompt"]');
-        promptEl.oninput = (e) => {
-            seg.prompt = e.target.value;
-            seg.negativePrompt = "";
-            editor.scheduleTimelineSync();
-        };
-        if (isR2v) {
-            wirePromptImageMentions(editor, promptEl, () => ({
-                refs: seg.refs || [],
-                audios: seg.refAudios || [],
-                videos: seg.refVideos || [],
-            }));
-        }
+        // UI 2.1 P5：非 r2v 镜头才在这里建 Prompt（r2v 的 Prompt 放 body 右列）。
+        if (!isR2v) prompts = createShotPromptBlock(editor, seg, false);
 
         const preview = document.createElement("div");
         preview.className = "bd-batch-preview";
         renderPreview(preview, seg, index === runningIdx, isVideo, seg.previewFps || fps);
 
         if (isR2v && r2vMain) {
-            r2vMain.appendChild(prompts);
+            // P5 修正：body 右列 = 衔接徽章 → Prompt（视觉主体）→ 预览；左列仍是参考素材。
+            // 这样「先看/传参考图（左）→ 再写提示词（右）」的动线不被打断，Prompt 依旧视觉中心。
+            r2vMain.appendChild(buildContinuityStrip(editor, seg));
+            r2vMain.appendChild(createShotPromptBlock(editor, seg, true));
             r2vMain.appendChild(preview);
         } else {
             card.appendChild(prompts);
             card.appendChild(preview);
+        }
+
+        // UI 2.1 P5：镜头设置折叠沉底（body 之后；资产选择行已在标题下方常显）。
+        if (isR2v) {
+            if (cfgWrap) card.appendChild(cfgWrap);
         }
 
         list.appendChild(card);
@@ -1586,6 +2639,78 @@ export function bindImageBatchEvents(editor) {
     editor.batchAddBtn?.addEventListener("click", (e) => {
         e.stopPropagation();
         addImageBatchGroup(editor);
+    });
+    // r2v 自动续接（ref2va 模型）：默认开启。用户取消勾选 = 显式关闭（写入 false）。
+    // 独立于 continuityEnabled（前端对非 fl2v 模式会强制清零该字段），存 timeline.output.r2vAutoContinuity。
+    const r2vAutoCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-auto-cb"]');
+    r2vAutoCb?.addEventListener("change", () => {
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.r2vAutoContinuity = !!r2vAutoCb.checked;
+        editor.batchPanel?.querySelector('[data-r="batch-r2v-auto"]')?.classList.toggle("active", r2vAutoCb.checked);
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+        editor.updateDomWidgetHeight?.();
+    });
+    // 全局资产库开关（Phase B）：默认开启。状态存 timeline.output.globalAssetsEnabled。
+    const assetsCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-assets-cb"]');
+    assetsCb?.addEventListener("change", () => {
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.globalAssetsEnabled = !!assetsCb.checked;
+        editor.batchPanel?.querySelector('[data-r="batch-r2v-assets"]')?.classList.toggle("active", assetsCb.checked);
+        editor.renderImageBatchGroups?.();
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+        editor.updateDomWidgetHeight?.();
+    });
+    editor.batchAssetsCastAdd?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addGlobalAsset(editor, "cast");
+    });
+    editor.batchAssetsLocAdd?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addGlobalAsset(editor, "location");
+    });
+    editor.batchAssetsPropAdd?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addGlobalAsset(editor, "props");
+    });
+    editor.batchAssetsStyleAdd?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        addGlobalAsset(editor, "styles");
+    });
+    editor.batchAssetsCastDef?.addEventListener("change", () => {
+        const a = getAssetsBlock(editor);
+        a.defaultCastId = editor.batchAssetsCastDef.value || "";
+        editor.renderImageBatchGroups?.();
+        editor.commit?.(false, { syncTimeline: true });
+        editor.updateDomWidgetHeight?.();
+    });
+    editor.batchAssetsLocDef?.addEventListener("change", () => {
+        const a = getAssetsBlock(editor);
+        a.defaultLocationId = editor.batchAssetsLocDef.value || "";
+        editor.renderImageBatchGroups?.();
+        editor.commit?.(false, { syncTimeline: true });
+        editor.updateDomWidgetHeight?.();
+    });
+    // 状态跟踪开关（阶段 C）：默认开启。状态存 timeline.output.stateTrackingEnabled。
+    const stateCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-state-cb"]');
+    stateCb?.addEventListener("change", () => {
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.stateTrackingEnabled = !!stateCb.checked;
+        editor.batchPanel?.querySelector('[data-r="batch-r2v-state"]')?.classList.toggle("active", stateCb.checked);
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+        editor.updateDomWidgetHeight?.();
+    });
+    // 智能尾帧选择总开关（待办④）：默认开启。状态存 timeline.output.smartTailEnabled。
+    const smartCb = editor.batchPanel?.querySelector('[data-r="batch-r2v-smarttail-cb"]');
+    smartCb?.addEventListener("change", () => {
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.smartTailEnabled = !!smartCb.checked;
+        editor.batchPanel?.querySelector('[data-r="batch-r2v-smarttail"]')?.classList.toggle("active", smartCb.checked);
+        editor.commit?.(false, { syncTimeline: true });
+        editor.scheduleRender?.();
+        editor.updateDomWidgetHeight?.();
     });
 }
 

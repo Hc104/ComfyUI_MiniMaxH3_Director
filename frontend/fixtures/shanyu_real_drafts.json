@@ -1,0 +1,131 @@
+{
+  "template_version": "h3-v1",
+  "drafts": [
+    {
+      "scene_id": "scene_01",
+      "shot_id": "shot_01",
+      "generation_mode": "t2v",
+      "camera_template": "establish",
+      "draft": {
+        "visual": "全景俯拍山雾笼罩的山雨楼，暖黄灯笼与湿石阶形成冷暖对比，老槐树水珠特写增强雨后质感",
+        "camera": "全景，缓摇交代山雨楼外环境，黄昏、雨氛围。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "establish"
+      }
+    },
+    {
+      "scene_id": "scene_01",
+      "shot_id": "shot_02",
+      "generation_mode": "fl2v",
+      "camera_template": "walk",
+      "draft": {
+        "visual": "中景跟拍沈青崖背影，逆光突出衣袂飘动，镜头从仰视灯笼渐切至推门动作",
+        "camera": "中景跟移，随沈青崖行走方向移动。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "motion"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_01",
+      "generation_mode": "fl2v",
+      "camera_template": "enter",
+      "draft": {
+        "visual": "中景镜头，沈青崖推门入内，柳如烟在柜台后抬头，两人对视时大堂灯光映出剪影",
+        "camera": "全景引入沈青崖、柳如烟登场，缓推至中景。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "enter"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_02",
+      "generation_mode": "fl2v",
+      "camera_template": "dialogue",
+      "draft": {
+        "visual": "低角度镜头，柳如烟手持茶碗从柜台后走出，暖光在瓷碗上形成反光",
+        "camera": "中景，正反打对切，柳如烟轮流入画，随对话节奏轻微推近。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，对白清晰，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "dialogue"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_03",
+      "generation_mode": "r2v",
+      "camera_template": "emotion_close",
+      "draft": {
+        "visual": "特写镜头，茶碗边缘水汽氤氲，沈青崖手指敲击桌面的震动波纹",
+        "camera": "近景，缓慢推近沈青崖，突出凝重的情绪。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，对白清晰，紧张氛围配乐渐起。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "emotion"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_04",
+      "generation_mode": "fl2v",
+      "camera_template": "emotion_close",
+      "draft": {
+        "visual": "逆光大特写，蒙面人黑纱在风中飘动，窄刀寒光刺破黄昏余晖",
+        "camera": "保持近景，微推，近景，缓慢推近蒙面人，突出压迫的情绪。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "emotion"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_05",
+      "generation_mode": "fl2v",
+      "camera_template": "dialogue",
+      "draft": {
+        "visual": "三角构图，沈青崖剑尖指向蒙面人，柳如烟短刃压在柜台下",
+        "camera": "保持近景，微推，中景，正反打对切，蒙面人、沈青崖、柳如烟轮流入画，随对话节奏轻微推近。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，对白清晰，紧张氛围配乐渐起。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "dialogue"
+      }
+    },
+    {
+      "scene_id": "scene_02",
+      "shot_id": "shot_06",
+      "generation_mode": "fl2v",
+      "camera_template": "ending",
+      "draft": {
+        "visual": "高速镜头，剑光与烛火碎片同时飞溅，柳如烟短刃反射冷光",
+        "camera": "中景，缓慢拉远，蒙面人、柳如烟、沈青崖渐行渐远，画面余韵收束。",
+        "style": "电影感，冷色调，湿地面反射，雨丝可见，画面干净通透，人物边缘清晰。",
+        "sound": "雨声淅沥，舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "ending"
+      }
+    },
+    {
+      "scene_id": "scene_03",
+      "shot_id": "shot_01",
+      "generation_mode": "fl2v",
+      "camera_template": "emotion_close",
+      "draft": {
+        "visual": "沈青崖侧坐石阶拭剑特写，柳如烟手持茶碗从画面右侧入镜，茶碗放置于石阶边缘后转身离场，晨光从画面左上角洒落",
+        "camera": "近景，缓慢推近沈青崖、柳如烟，突出静谧中带着疏离感的情绪。",
+        "style": "电影感，自然色调，柔和漫射光，画面干净通透，人物边缘清晰。",
+        "sound": "舒缓氛围配乐。",
+        "negative": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。",
+        "camera_intent": "emotion"
+      }
+    }
+  ]
+}

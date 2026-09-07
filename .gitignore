@@ -25,3 +25,17 @@ Thumbs.db
 # Runtime / local caches (ComfyUI output/minimax_seg_cache is outside this repo)
 .minimax_seg_cache/
 .bernini_seg_cache/
+
+# Blind-test TTS runtime outputs（参考音频/合成产物/盲听目录/答案文件，不入库）
+blind_test/refs/
+blind_test/raw/
+blind_test/blind/
+blind_test/mapping.key
+
+# 本地备份 / 临时文件 / 构建与运行产物（不入库）
+CHANGELOG.md.bak_*
+*.bak
+testwrite.tmp
+*.timestamp-*
+output/
+frontend/node_modules.old/

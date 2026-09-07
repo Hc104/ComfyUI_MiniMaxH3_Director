@@ -1,0 +1,162 @@
+{
+  "_comment": "样例：r2v prompt_batch 模式的真实 timeline_data（符合后端 22 字段段白名单）。来源：现有节点契约 + example_workflows/minimax_h3_director_r2v.json。durationSec 是真相源，frameCount/length 由 Adapter 派生（对齐 17k+5 网格）。",
+  "version": 5,
+  "timelineMode": "prompt_batch",
+  "editMode": "segment",
+  "totalFrames": 406,
+  "frameRate": 24,
+  "width": 864,
+  "height": 480,
+  "refMaxSize": 864,
+  "scenes": [
+    {
+      "id": "sc1",
+      "name": "霓虹街区",
+      "location": "霓虹街区",
+      "time": "夜晚",
+      "order": 0,
+      "assets": {
+        "cast": [
+          { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png" }
+        ],
+        "locations": [
+          { "id": "loc_neon", "name": "霓虹街区", "kind": "location", "imageFile": "minimax_studio/locations/neon.png" }
+        ],
+        "props": [],
+        "styles": []
+      },
+      "defaultCastId": "cast_linxue",
+      "defaultLocationId": "loc_neon"
+    },
+    {
+      "id": "sc2",
+      "name": "数据塔",
+      "location": "数据塔",
+      "time": "夜晚",
+      "order": 1,
+      "assets": {
+        "cast": [
+          { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png" }
+        ],
+        "locations": [
+          { "id": "loc_tower", "name": "数据塔", "kind": "location", "imageFile": "minimax_studio/locations/tower.png" }
+        ],
+        "props": [],
+        "styles": []
+      },
+      "defaultCastId": "cast_linxue",
+      "defaultLocationId": "loc_tower"
+    }
+  ],
+  "assets": {
+    "cast": [
+      { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png" }
+    ],
+    "locations": [
+      { "id": "loc_neon", "name": "霓虹街区", "kind": "location", "imageFile": "minimax_studio/locations/neon.png" },
+      { "id": "loc_tower", "name": "数据塔", "kind": "location", "imageFile": "minimax_studio/locations/tower.png" }
+    ]
+  },
+  "global": {
+    "taskType": "r2v — 参考主体生视频(Reference to Video)",
+    "prompt": "",
+    "refs": [],
+    "refAudios": [],
+    "referenceVideo": {},
+    "continuousReference": false,
+    "genImage": { "imageFile": "" }
+  },
+  "output": {
+    "mode": "fixed",
+    "longEdge": 864,
+    "width": 864,
+    "height": 480,
+    "maxExportFrames": 0,
+    "exportMode": "all",
+    "continuityEnabled": false,
+    "continuityOverlapFrames": 9,
+    "audioMode": "auto",
+    "qwenVlEnabled": false,
+    "qwenVlLevel": 1
+  },
+  "gen": { "defaultFrameCount": 124 },
+  "segments": [
+    {
+      "id": "s1",
+      "start": 0,
+      "length": 124,
+      "frameCount": 124,
+      "durationSec": 5,
+      "prompt": "林雪（雨衣，湿发）从镜头前走过霓虹街区，红色灯牌在雨夜反光，镜头缓慢跟随。",
+      "negativePrompt": "text, logo, watermark",
+      "taskType": "r2v — 参考主体生视频(Reference to Video)",
+      "refs": [
+        { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+      ],
+      "refAudios": [],
+      "refVideos": [],
+      "genImage": { "imageFile": "" },
+      "castId": "cast_linxue",
+      "locationId": "loc_neon",
+      "castManual": true,
+      "locationManual": false,
+      "stateChange": "登场",
+      "smartTail": false,
+      "sceneId": "sc1",
+      "continuityMode": "auto",
+      "consistencyCheck": "auto"
+    },
+    {
+      "id": "s2",
+      "start": 124,
+      "length": 141,
+      "frameCount": 141,
+      "durationSec": 6,
+      "prompt": "林雪在霓虹灯下回头，雨滴从她脸颊滑落，镜头缓慢推进至脸部特写。",
+      "negativePrompt": "text, logo, watermark",
+      "taskType": "r2v — 参考主体生视频(Reference to Video)",
+      "refs": [
+        { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+      ],
+      "refAudios": [],
+      "refVideos": [],
+      "genImage": { "imageFile": "" },
+      "castId": "cast_linxue",
+      "locationId": "loc_neon",
+      "castManual": true,
+      "locationManual": false,
+      "stateChange": "回头",
+      "smartTail": false,
+      "sceneId": "sc1",
+      "continuityMode": "auto",
+      "consistencyCheck": "auto"
+    },
+    {
+      "id": "s3",
+      "start": 265,
+      "length": 141,
+      "frameCount": 141,
+      "durationSec": 6,
+      "prompt": "林雪走向高耸的数据塔入口，全息广告在玻璃幕墙上闪烁，镜头从身后仰拍跟随。",
+      "negativePrompt": "text, logo, watermark",
+      "taskType": "r2v — 参考主体生视频(Reference to Video)",
+      "refs": [
+        { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+      ],
+      "refAudios": [],
+      "refVideos": [],
+      "genImage": { "imageFile": "" },
+      "castId": "cast_linxue",
+      "locationId": "loc_tower",
+      "castManual": true,
+      "locationManual": false,
+      "stateChange": "抵达数据塔",
+      "smartTail": false,
+      "sceneId": "sc2",
+      "continuityMode": "auto",
+      "consistencyCheck": "auto"
+    }
+  ],
+  "runSelectEnabled": false,
+  "runSelection": []
+}

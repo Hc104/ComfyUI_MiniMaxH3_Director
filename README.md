@@ -152,6 +152,16 @@ pip install -r ComfyUI_MiniMaxH3_Director/requirements.txt
 | **QQ 交流群** | **551482703** · **425064221** · **559826331** |
 | **Comfyit 搅拌站** | [comfyit.cn](https://comfyit.cn/) |
 
+## 相关文档（开发/排错先看这里）
+
+| 文档 | 用途 |
+|---|---|
+| [OPERATION_GUIDE.md](OPERATION_GUIDE.md) | **操作使用指南**：界面布局、每个开关/字段含义、完整流程、常见排查（可发给其他 AI 助手） |
+| [CHANGELOG.md](CHANGELOG.md) | **修改记录总索引**：全部改动时间线 + 涉及文件 + 已知坑速查 |
+| [STATE_MANAGER_DESIGN.md](STATE_MANAGER_DESIGN.md) | State Manager（AI 导演状态管理器）设计方案 |
+| [QWEN3VL_FEEDBACK_PLAN.md](QWEN3VL_FEEDBACK_PLAN.md) | Qwen3-VL 三级反馈实施计划（里程碑 A/B/C 全部定稿） |
+| [LATENT_CHAINING_FIX.md](LATENT_CHAINING_FIX.md) | MiniMax H3 无缝衔接正确机制（官方源码版） |
+
 ## 致谢
 
 - [Comfy-Org / ComfyUI](https://github.com/Comfy-Org/ComfyUI) — 官方 MiniMax H3 支持

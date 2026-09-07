@@ -1,0 +1,157 @@
+{
+  "_comment": "样例项目模型（前端语义模型）。与 sample-r2v-timeline.json 内容等价：Director Core → MiniMaxH3Adapter 应产出同一 timeline_data。durationSec 是唯一时长真相，frameCount 不在本项目模型中。",
+  "id": "proj_cybercity",
+  "name": "赛博都市",
+  "createdAt": "2026-08-09T00:00:00.000Z",
+  "updatedAt": "2026-08-09T00:00:00.000Z",
+  "episodes": [
+    {
+      "id": "ep1",
+      "episodeNumber": 1,
+      "title": "霓虹之夜",
+      "description": "赛博都市第一集：林雪在雨夜穿过霓虹街区，抵达数据塔。",
+      "assets": {
+        "cast": [
+          { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png", "description": "女主角，黑色雨衣，湿发" }
+        ],
+        "locations": [
+          { "id": "loc_neon", "name": "霓虹街区", "kind": "location", "imageFile": "minimax_studio/locations/neon.png", "description": "狭窄街道，红色灯牌" },
+          { "id": "loc_tower", "name": "数据塔", "kind": "location", "imageFile": "minimax_studio/locations/tower.png", "description": "全息广告的高楼" }
+        ],
+        "props": [],
+        "styles": []
+      },
+      "scenes": [
+        {
+          "id": "sc1",
+          "name": "霓虹街区",
+          "order": 0,
+          "description": "雨夜霓虹街道，红色灯牌，浅水洼反光。",
+          "location": "霓虹街区",
+          "time": "夜晚",
+          "weather": "小雨",
+          "assets": {
+            "cast": [
+              { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png" }
+            ],
+            "locations": [
+              { "id": "loc_neon", "name": "霓虹街区", "kind": "location", "imageFile": "minimax_studio/locations/neon.png" }
+            ],
+            "props": [],
+            "styles": []
+          },
+          "defaultCastId": "cast_linxue",
+          "defaultLocationId": "loc_neon",
+          "shots": [
+            {
+              "id": "s1",
+              "sceneId": "sc1",
+              "order": 0,
+              "name": "雨夜登场",
+              "durationSec": 5,
+              "content": {
+                "visual": "林雪（雨衣，湿发）从镜头前走过霓虹街区，红色灯牌在雨夜反光，镜头缓慢跟随。",
+                "negativePrompt": "text, logo, watermark"
+              },
+              "refs": {
+                "refImages": [
+                  { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+                ],
+                "refAudios": [],
+                "refVideos": [],
+                "genImage": { "imageFile": "" }
+              },
+              "castId": "cast_linxue",
+              "castManual": true,
+              "generation": {
+                "taskType": "r2v",
+                "continuityMode": "auto",
+                "smartTail": false,
+                "stateChange": "登场",
+                "consistencyCheck": "auto"
+              }
+            },
+            {
+              "id": "s2",
+              "sceneId": "sc1",
+              "order": 1,
+              "name": "回眸",
+              "durationSec": 6,
+              "content": {
+                "visual": "林雪在霓虹灯下回头，雨滴从她脸颊滑落，镜头缓慢推进至脸部特写。",
+                "negativePrompt": "text, logo, watermark"
+              },
+              "refs": {
+                "refImages": [
+                  { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+                ],
+                "refAudios": [],
+                "refVideos": [],
+                "genImage": { "imageFile": "" }
+              },
+              "castId": "cast_linxue",
+              "castManual": true,
+              "generation": {
+                "taskType": "r2v",
+                "continuityMode": "auto",
+                "smartTail": false,
+                "stateChange": "回头",
+                "consistencyCheck": "auto"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sc2",
+          "name": "数据塔",
+          "order": 1,
+          "description": "高耸的数据塔，全息广告在玻璃幕墙上闪烁。",
+          "location": "数据塔",
+          "time": "夜晚",
+          "assets": {
+            "cast": [
+              { "id": "cast_linxue", "name": "林雪", "kind": "cast", "imageFile": "minimax_studio/cast/linxue.png" }
+            ],
+            "locations": [
+              { "id": "loc_tower", "name": "数据塔", "kind": "location", "imageFile": "minimax_studio/locations/tower.png" }
+            ],
+            "props": [],
+            "styles": []
+          },
+          "defaultCastId": "cast_linxue",
+          "defaultLocationId": "loc_tower",
+          "shots": [
+            {
+              "id": "s3",
+              "sceneId": "sc2",
+              "order": 0,
+              "name": "抵达数据塔",
+              "durationSec": 6,
+              "content": {
+                "visual": "林雪走向高耸的数据塔入口，全息广告在玻璃幕墙上闪烁，镜头从身后仰拍跟随。",
+                "negativePrompt": "text, logo, watermark"
+              },
+              "refs": {
+                "refImages": [
+                  { "index": 0, "imageFile": "minimax_studio/cast/linxue.png", "fileName": "linxue.png" }
+                ],
+                "refAudios": [],
+                "refVideos": [],
+                "genImage": { "imageFile": "" }
+              },
+              "castId": "cast_linxue",
+              "castManual": true,
+              "generation": {
+                "taskType": "r2v",
+                "continuityMode": "auto",
+                "smartTail": false,
+                "stateChange": "抵达数据塔",
+                "consistencyCheck": "auto"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

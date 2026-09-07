@@ -1,0 +1,50 @@
+{
+  "version": "h3-v1",
+  "language": "zh",
+  "description": "V1.7 Phase 3 结构化生产 Prompt 草稿模板（P0-C）。中文草稿供人工审核；英文转换留 Phase 4（依赖官方 base-en/ref-en）。改此文件措辞不影响解析逻辑；未来 h3-v2 老项目不重新生成。",
+  "sections": {
+    "visual": {
+      "template": "{visual_intent}",
+      "fallback": "{subject}{actions_hint}{props_hint}，在{location_hint}{time_hint}。"
+    },
+    "camera": {
+      "default": "中景，固定机位，平稳构图。",
+      "intents": {
+        "establish": "全景，缓摇交代{location}环境，{time}氛围。",
+        "dialogue": "中景，正反打对切，{subject}轮流入画。",
+        "motion": "中景跟移，随{subject}移动，{time}光线变化。",
+        "emotion": "近景，缓慢推近{subject}，突出{emotion}的情绪。",
+        "close": "特写，缓慢推近{subject}面部与手部细节。",
+        "ending": "中景，缓慢拉远，{subject}渐行渐远，画面余韵收束。"
+      }
+    },
+    "style": {
+      "template": "电影感，{palette}，画面干净通透，人物边缘清晰。"
+    },
+    "sound": {
+      "template": "{ambient}{dialogue_hint}{music_hint}"
+    },
+    "negative": {
+      "template": "画面模糊，肢体扭曲，多余肢体，面部变形，文字水印，字幕，低质量，构图杂乱。"
+    }
+  },
+  "palettes": {
+    "雨": "冷色调，湿地面反射，雨丝可见",
+    "夜": "冷色调，低照度，霓虹光斑",
+    "黄昏": "暖橙色调，长阴影",
+    "雪": "冷白调，高对比度",
+    "清晨": "清冷晨光，薄雾微光",
+    "default": "自然色调，柔和漫射光"
+  },
+  "ambients": {
+    "雨": "雨声淅沥，",
+    "夜": "夜风低语，远处隐约人声，",
+    "清晨": "晨间鸟鸣，",
+    "default": ""
+  },
+  "sound_hints": {
+    "dialogue": "对白清晰，",
+    "music_tense": "紧张氛围配乐渐起。",
+    "music_calm": "舒缓氛围配乐。"
+  }
+}

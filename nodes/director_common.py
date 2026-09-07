@@ -121,7 +121,7 @@ def default_timeline_json(
                 "width": width,
                 "height": height,
                 "maxExportFrames": 0,
-                "exportMode": "all",
+                "exportMode": "scene",
                 "audioMode": "generate",
             },
             "videoClips": [],
@@ -257,7 +257,10 @@ def finalize_director_outputs(
     segment_audios: list | None = None,
 ):
     is_batch = is_prompt_batch_timeline(plan.raw, plan.global_task_key)
-    export_segments = plan.export_mode == "segments"
+    # 分镜导出（segments）与场景导出（scene）都输出"多条 clip"：
+    # segments=每条是单镜头，scene=每条是单场景（镜头已按场景合并）。
+    export_segments = plan.export_mode in ("segments", "scene")
+    split_label = "Scene" if plan.export_mode == "scene" else "shot"
     video_batch = is_video_batch_task_key(plan.global_task_key)
 
     if export_segments or (is_batch and not video_batch):
@@ -266,7 +269,7 @@ def finalize_director_outputs(
         if export_segments and len(segment_outputs) > 1:
             report = (
                 report
-                + f"\n\nExport mode: segments — {len(segment_outputs)} clip(s) on images output."
+                + f"\n\nExport mode: {plan.export_mode} — {len(segment_outputs)} {split_label} clip(s) on images output."
             )
         if plan.run_indices is not None:
             report = (
@@ -274,10 +277,12 @@ def finalize_director_outputs(
                 + f"\n\nPartial run: output contains {len(segment_outputs)} re-generated clip(s) only."
             )
     else:
-        combined = pad_or_trim_frames(combined, plan.total_frames).cpu().float()
+        combined = pad_or_trim_frames(combined, plan.total_frames).cpu()
         images_out = [combined]
         frame_count = int(combined.shape[0])
-        if video_batch and is_batch and len(segment_outputs) > 1:
+        if plan.export_mode == "movie":
+            report = report + f"\n\nExport mode: movie — {frame_count} frame(s) on images output."
+        elif video_batch and is_batch and len(segment_outputs) > 1:
             report = report + f"\n\nExport mode: all — merged {frame_count} frame(s) on images output."
         if plan.run_indices is not None and video_batch:
             report = report + f"\n\nPartial run: re-generated {len(segment_outputs)} video group(s)."
@@ -321,8 +326,6 @@ def finalize_director_outputs(
 
     images_out = _ensure_nonempty_image_batches(images_out, label="images")
     source_images_out = _ensure_nonempty_image_batches(source_images_out, label="source_images")
-
-    report = report + "\n\n有问题联系作者：AI搅拌手  QQ交流群：551482703"
 
     fps_out = float(plan.frame_rate or 24.0)
     return images_out, audio_out, fps_out, frame_count, source_images_out, report

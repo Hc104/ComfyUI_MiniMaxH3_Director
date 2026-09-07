@@ -4,6 +4,7 @@ import {
     CUSTOM_ASPECT_RATIO,
     DEFAULT_ASPECT_RATIO,
     DEFAULT_MEGAPIXELS,
+    defaultDurationSec,
     defaultFrameCount,
     durationToClampedMiniMaxFrames,
     framesToDurationSec,
@@ -79,6 +80,9 @@ import {
     updateFl2vToolbarBtns,
 } from "./minimax_fl2v.js";
 import { mountPromptImageMentions } from "./minimax_prompt_mentions.js";
+import { ADVANCED_PANEL_STYLES, getAdvancedPanelUiHeight, mountAdvancedPanel } from "./minimax_advanced_panel.js";
+import { addScene, exportScene, getScenesBlock, mountSceneManagerPanel, SCENE_MANAGER_STYLES } from "./minimax_scene_manager.js";
+import { mountAssetLibraryPanel, mountExportCenterPanel, EXPORT_CENTER_STYLES } from "./minimax_export_center.js";
 import {
     applyI18nDom,
     aspectDisplayLabel,
@@ -256,7 +260,11 @@ function stripTimelineEphemeralFields(timeline) {
 const HIDDEN_WIDGETS = [
     "timeline_data", "total_frames", "width", "height", "ref_max_size",
     "task_type", "global_prompt", "frame_rate", "cfg",
-    // seed stays visible under 采样设置 (with control_after_generate)
+    // 第四优先级：采样/性能参数移入底部「高级设置」面板（DOM 镜像读写），原生控件隐藏。
+    "seed", "control_after_generate", "control after generate",
+    "steps", "sampler", "scheduler", "shift_video", "shift_audio",
+    "clear_vram_between_segments", "export_source_images",
+    "bd_grp_sample", "bd_grp_advanced", "bd_grp_perf",
 ];
 
 const DIRECTOR_WIDGET_LABEL_KEYS = {
@@ -371,7 +379,44 @@ function makeGroupHeaderWidget(inputName, inputData) {
 const STYLES = `
 .mmx-host{width:100%;box-sizing:border-box;display:block}
 .bd-wrap{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;color:#e0e0e0;font-size:11px;display:flex;flex-direction:column;gap:6px;width:100%;box-sizing:border-box;position:relative;min-height:var(--comfy-widget-min-height,0px)}
+/* Scene Manager 顶部导航 tab（时间线 / 场景管理 / 素材库 / 导出中心） */
+.bd-console{display:flex;flex-direction:column;gap:5px;width:100%;box-sizing:border-box;padding:7px 9px 5px;background:linear-gradient(180deg,#1c1c1c 0%,#141414 100%);border:1px solid #2a2a2a;border-radius:8px}
+.bd-console-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.bd-console-scene{display:flex;align-items:baseline;gap:9px;min-width:0}
+.bd-console-scene-name{font-size:13.5px;font-weight:700;color:#f0f4f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.bd-console-scene-meta{font-size:10.5px;color:#8a8a8a;white-space:nowrap;flex:0 0 auto}
+.bd-console-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.bd-console-btn{font-size:10.5px;padding:6px 10px}
+.bd-console-sep{width:1px;height:18px;background:#333;margin:0 3px}
+.bd-console-nav{border:1px solid transparent;background:transparent;color:#9a9a9a;font-size:10.5px;line-height:1;padding:5px 8px;cursor:pointer;border-radius:6px;transition:background .12s,color .12s;user-select:none;white-space:nowrap}
+.bd-console-nav:hover{background:#242424;color:#dcdcdc}
+.bd-console-nav.active{background:#1d3a2c;color:#4fff8f;font-weight:600}
+.bd-console-scenes{display:flex;gap:4px;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box}
+/* 第三优先级 + P3 重构：顶部固定生成栏（生成操作下拉 + 生成按钮 + 运行状态）。
+   run-status 从节点底部移入此栏，保证生成控制与进度始终在节点最易达的位置。 */
+.bd-genbar{position:relative;display:flex;align-items:stretch;gap:8px;width:100%;box-sizing:border-box;padding:6px 8px;background:#131313;border:1px solid #2a2a2a;border-radius:6px;flex-wrap:wrap}
+.bd-genbar-left{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.bd-genbar-dd{position:relative;flex-shrink:0}
+.bd-genbar-dd-btn{border:1px solid #333;background:#1a1a1a;color:#dcdcdc;font-size:10px;line-height:1;padding:9px 11px;cursor:pointer;border-radius:5px;transition:background .12s,color .12s,border-color .12s;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.bd-genbar-dd-btn:hover{background:#242424;color:#fff;border-color:#4fff8f}
+.bd-genbar-dd-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:120;min-width:172px;background:#1c1c1c;border:1px solid #333;border-radius:6px;box-shadow:0 8px 22px rgba(0,0,0,.55);padding:3px;display:flex;flex-direction:column;gap:1px}
+.bd-genbar-dd-pop.hidden{display:none}
+.bd-genbar-dd-item{border:none;background:transparent;color:#aaa;font-size:10.5px;line-height:1;padding:8px 10px;cursor:pointer;border-radius:4px;text-align:left;transition:background .1s,color .1s;white-space:nowrap}
+.bd-genbar-dd-item:hover{background:#252525;color:#eee}
+.bd-genbar-dd-item.active{background:#1d3a2c;color:#4fff8f;font-weight:600}
+.bd-genbar-dd-item:disabled{opacity:.38;cursor:not-allowed}
+.bd-genbar-run{flex-shrink:0;border:none;border-radius:6px;background:linear-gradient(90deg,#2a6b4a,#4fff8f);color:#06120c;font-size:11px;font-weight:700;line-height:1;padding:9px 18px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4);transition:filter .12s}
+.bd-genbar-run:hover{filter:brightness(1.12)}
+.bd-genbar-run:active{transform:translateY(1px)}
+.bd-genbar-run:disabled{opacity:.45;cursor:not-allowed;filter:none;transform:none}
+.bd-genbar-summary{color:#888;font-size:10px;white-space:nowrap;flex-shrink:0;align-self:center}
+.bd-genbar-summary.ready{color:#4fff8f}
+.bd-genbar-summary.warn{color:#f88}
+.bd-nav-pane{display:flex;flex-direction:column;gap:6px;width:100%;box-sizing:border-box}
+.bd-nav-pane.hidden{display:none!important}
 .bd-main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:6px;width:100%}
+.bd-main.hidden{display:none!important}
+.bd-nav-scenes-placeholder,.bd-nav-assets-placeholder,.bd-nav-export-placeholder{color:#666;font-size:11px;padding:12px;border:1px dashed #2e2e2e;border-radius:6px;line-height:1.6}
 .bd-modal-overlay{position:absolute;inset:0;z-index:200;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:10px;box-sizing:border-box;border-radius:6px}
 .bd-modal{background:#1e1e1e;border:1px solid #333;border-radius:6px;padding:12px;width:100%;max-width:460px;max-height:calc(100% - 8px);display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 28px rgba(0,0,0,.5)}
 .bd-modal-title{color:#e0e0e0;font-size:12px;font-weight:600;line-height:1.35}
@@ -496,7 +541,7 @@ const STYLES = `
 .bd-output label{color:#888;font-size:10px;white-space:nowrap}
 .bd-output .bd-out-fixed{display:flex;gap:4px;align-items:center}
 .bd-output .bd-out-fixed.hidden{display:none}
-.bd-run-status{width:100%;box-sizing:border-box;padding:8px 10px;background:#151515;border:1px solid #333;border-radius:6px;display:flex;flex-direction:column;gap:5px;margin-top:auto;flex-shrink:0}
+.bd-run-status{flex:1;min-width:220px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;padding:0 2px;flex-shrink:0}
 .bd-run-status.idle .bd-run-title{color:#888}
 .bd-run-status.active .bd-run-title{color:#4fff8f}
 .bd-run-status.done .bd-run-title{color:#7a9cff}
@@ -550,8 +595,37 @@ const STYLES = `
 .bd-continuous-ref label{display:flex;align-items:center;gap:4px;cursor:pointer}
 .bd-continuous-ref input[type="checkbox"]{width:14px;height:14px;margin:0;cursor:pointer;accent-color:#4fff8f}
 .bd-gen-fc-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+/* ===== 第一优先级 UI 重构：Scene+Shot 导航条（时间线页顶部）===== */
+.bd-scene-nav{display:flex;gap:5px;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box;padding:2px 0}
+.bd-scene-sel,.bd-filter-sel{background:#1a1a1a;color:#ccc;border:1px solid #333;border-radius:6px;font-size:10.5px;line-height:1.3;padding:4px 6px;cursor:pointer;max-width:220px}
+.bd-scene-sel:hover,.bd-filter-sel:hover{border-color:#4fff8f}
+.bd-scene-sel option,.bd-filter-sel option{background:#1c1c1c;color:#ccc}
+.bd-filter-label{color:#888;font-size:10px;white-space:nowrap}
+.bd-scene-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #333;border-radius:12px;background:#1a1a1a;color:#aaa;font-size:10.5px;line-height:1;padding:4px 10px;cursor:pointer;user-select:none;transition:background .12s,color .12s,border-color .12s;white-space:nowrap}
+.bd-scene-chip:hover{background:#242424;color:#e0e0e0}
+.bd-scene-chip.active{background:#1c2b20;border-color:#4fff8f;color:#4fff8f;font-weight:600}
+.bd-scene-chip .bd-scene-num{opacity:.7;font-variant-numeric:tabular-nums}
+.bd-scene-chip .bd-scene-meta{opacity:.6;font-size:9.5px;margin-left:1px}
+.bd-scene-chip-add{border-style:dashed;color:#888}
+.bd-scene-chip-add:hover{border-color:#4fff8f;color:#4fff8f;background:#101810}
+.bd-shot-nav{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;align-items:center;width:100%;box-sizing:border-box;padding:2px 0 4px;border-bottom:1px solid #222}
+.bd-shot-nav::-webkit-scrollbar{height:4px}
+.bd-shot-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #333;border-radius:10px;background:#161616;color:#bbb;font-size:10.5px;line-height:1;padding:4px 9px;cursor:pointer;user-select:none;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}
+.bd-shot-chip:hover{background:#222;color:#eee}
+.bd-shot-chip.active{background:#1c2b20;border-color:#4fff8f;color:#4fff8f}
+.bd-shot-dot{width:7px;height:7px;border-radius:50%;background:#555;flex:0 0 auto}
+.bd-shot-chip.done .bd-shot-dot{background:#4fff8f}
+.bd-shot-dot.st-running{background:#4da3ff;animation:bdShotPulse 1.2s ease-in-out infinite}
+.bd-shot-dot.st-review{background:#ffa94d}
+.bd-shot-dot.st-failed{background:#ff6b6b}
+@keyframes bdShotPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.bd-shot-dur{opacity:.6;font-size:9.5px;font-variant-numeric:tabular-nums}
+.bd-shot-nav-empty{color:#666;font-size:10.5px;padding:3px 2px}
 ${IMAGE_BATCH_STYLES}
 ${FL2V_STYLES}
+${SCENE_MANAGER_STYLES}
+${EXPORT_CENTER_STYLES}
+${ADVANCED_PANEL_STYLES}
 @media(max-width:768px){
 .bd-prompt-layout,.bd-prompt-layout.bd-rv2v-layout,.bd-prompt-layout.bd-v2v-layout{grid-template-columns:1fr}
 .bd-ref{max-height:64px}
@@ -755,18 +829,21 @@ function buildClipFrameMap(clipIndex, count) {
 const CLIP_SEGMENT_COLORS = ["rgba(255,200,50,0.9)", "rgba(102,170,255,0.9)", "rgba(79,255,143,0.9)", "rgba(255,102,170,0.9)"];
 
 function getDirectorUiHeight(editor) {
+    const advH = getAdvancedPanelUiHeight(editor);
+    // UI 2.1 P1：场景优先控制台头部（场景行 + 场景胶囊行）高度。
+    const CONSOLE_H = 66;
     if (editor?.getDirectorMode?.() === "prompt_batch") {
         const batchH = getImageBatchUiHeight(editor);
         // r2v shows the main timeline track (like fl2v) above batch cards.
         if (editor?.isR2vBatch?.()) {
-            return batchH + (editor?.canvasHeight || RULER_H + SEG_LABEL_H + TRACK_H) + 160;
+            return batchH + (editor?.canvasHeight || RULER_H + SEG_LABEL_H + TRACK_H) + 160 + advH + CONSOLE_H;
         }
-        return batchH + 140;
+        return batchH + 140 + advH + CONSOLE_H;
     }
     if (editor?.getDirectorMode?.() === "fl2v") {
-        return getFl2vUiHeight(editor) + 160;
+        return getFl2vUiHeight(editor) + 160 + advH + CONSOLE_H;
     }
-    let h = (editor?.canvasHeight || RULER_H + SEG_LABEL_H + TRACK_H) + 370 + 52;
+    let h = (editor?.canvasHeight || RULER_H + SEG_LABEL_H + TRACK_H) + 370 + 52 + advH + CONSOLE_H;
     if (
         editor?.hasVideo?.()
         && !editor?.isImageBatch?.()
@@ -908,6 +985,37 @@ function hideWidget(w) {
     if (w.element) w.element.style.display = "none";
 }
 
+/** Re-apply HIDDEN_WIDGETS visibility (seed's control_after_generate may attach late). */
+function applyDirectorWidgetVisibility(node) {
+    for (const w of node.widgets || []) {
+        const name = String(w.name || "");
+        if (HIDDEN_WIDGETS.includes(name)) hideWidget(w);
+        else if (/(control[_\s]?after[_\s]?generate|生成前后)/i.test(name)) hideWidget(w);
+    }
+}
+
+function migrateLocationAssetKey(assetsBlock) {
+    // 资产键统一：只保留 locations（复数）。旧数据若存过 assets.location（单数），
+    // 在加载/ensure 时迁移到 locations；两者并存则按 id 去重合并。
+    if (!assetsBlock || typeof assetsBlock !== "object") return assetsBlock;
+    const legacy = assetsBlock.location;
+    if (Array.isArray(legacy)) {
+        if (!Array.isArray(assetsBlock.locations)) {
+            assetsBlock.locations = legacy;
+        } else if (legacy.length) {
+            const ids = new Set(assetsBlock.locations.map((x) => x && x.id).filter(Boolean));
+            for (const item of legacy) {
+                if (item && typeof item === "object" && !(item.id && ids.has(item.id))) {
+                    assetsBlock.locations.push(item);
+                    if (item.id) ids.add(item.id);
+                }
+            }
+        }
+    }
+    delete assetsBlock.location;
+    return assetsBlock;
+}
+
 function parseTimeline(raw, totalFrames, fps) {
     const total = totalFrames || 124;
     const base = {
@@ -932,12 +1040,15 @@ function parseTimeline(raw, totalFrames, fps) {
             megapixels: DEFAULT_MEGAPIXELS,
             multiple: MINIMAX_CANVAS_MULTIPLE,
             longEdge: 848, width: 848, height: 480,
-            maxExportFrames: 0, exportMode: "all",
+            maxExportFrames: 0, exportMode: "scene",
             audioMode: "generate",
             continuityEnabled: false, continuityOverlapFrames: 9,
         },
         runSelectEnabled: false,
         runSelection: [],
+        // Scene Manager（一级对象）：场景列表。每个场景拥有独立素材组
+        // （角色/场景/道具/风格参考）；段通过 sceneId 归属到场景。
+        scenes: [],
         segments: [{ id: uid(), start: 0, length: total, prompt: "", taskType: "", refs: [], refAudios: [], referenceVideo: {} }],
     };
     if (!raw?.trim()) return base;
@@ -977,10 +1088,14 @@ function parseTimeline(raw, totalFrames, fps) {
             width: data.output?.width ?? data.width ?? 864,
             height: data.output?.height ?? data.height ?? 480,
             maxExportFrames: data.output?.maxExportFrames ?? data.output?.max_export_frames ?? 0,
-            exportMode: data.output?.exportMode ?? data.output?.export_mode ?? "all",
+            exportMode: data.output?.exportMode ?? data.output?.export_mode ?? "scene",
             audioMode: normalizeAudioMode(data.output?.audioMode ?? data.output?.audio_mode),
             continuityEnabled: data.output?.continuityEnabled ?? data.output?.continuity_enabled,
             continuityOverlapFrames: data.output?.continuityOverlapFrames ?? data.output?.continuity_overlap_frames,
+            // 待办⑤ 里程碑 A：AI 导演设置面板 —— Qwen 视觉反馈开关/级别必须跨保存/重载保留。
+            // 缺失字段 = 默认关（qwenVlEnabled）与默认 1 级（qwenVlLevel），显式布尔/数值保留。
+            qwenVlEnabled: data.output?.qwenVlEnabled ?? data.output?.qwen_vl_enabled ?? false,
+            qwenVlLevel: data.output?.qwenVlLevel ?? data.output?.qwen_vl_level ?? 1,
         });
         // Infer aspectRatio from saved width/height when older payloads omitted the label.
         if (!data.output.aspectRatio && data.output.width > 0 && data.output.height > 0) {
@@ -1018,6 +1133,30 @@ function parseTimeline(raw, totalFrames, fps) {
         data.gen = data.gen || { defaultFrameCount: 124 };
         if (data.global) {
             data.global.genImage = data.global.genImage || { imageFile: data.global.imageFile || "" };
+        }
+        // Scene Manager：归一化 scenes 块（旧时间线无此字段 → 空数组）。
+        data.scenes = Array.isArray(data.scenes) ? data.scenes : [];
+        // 资产键统一：全局资产（timeline.assets）旧数据 location（单数）→ locations。
+        if (data.assets) migrateLocationAssetKey(data.assets);
+        for (const sc of data.scenes) {
+            if (!sc || typeof sc !== "object") continue;
+            if (!sc.id) sc.id = uid();
+            sc.name = sc.name ?? "";
+            sc.location = sc.location ?? "";
+            sc.time = sc.time ?? "";
+            sc.order = sc.order ?? 0;
+            sc.assets = sc.assets || {};
+            // 资产键统一：场景素材组旧数据 location（单数）→ locations。
+            migrateLocationAssetKey(sc.assets);
+            sc.assets.cast = sc.assets.cast || [];
+            sc.assets.locations = sc.assets.locations || [];
+            sc.assets.props = sc.assets.props || [];
+            sc.assets.styles = sc.assets.styles || [];
+            sc.defaultCastId = sc.defaultCastId ?? "";
+            sc.defaultLocationId = sc.defaultLocationId ?? "";
+        }
+        for (const seg of data.segments || []) {
+            if (seg.sceneId == null) seg.sceneId = "";
         }
         data.runSelectEnabled = !!data.runSelectEnabled;
         data.runSelection = Array.isArray(data.runSelection) ? data.runSelection.map((i) => parseInt(i, 10)).filter((i) => i >= 0) : [];
@@ -1119,6 +1258,10 @@ class MiniMaxH3DirectorEditor {
         this._stageClipIndex = -1;
         this._stageSyncMs = 0;
         this._playHandoff = false;
+        this._activeSceneId = "";
+        this._segCacheStatus = null;
+        this._genScope = "all";
+        this._shotFilter = "";
 
         for (const w of node.widgets || []) {
             if (HIDDEN_WIDGETS.includes(w.name)) hideWidget(w);
@@ -1156,6 +1299,10 @@ class MiniMaxH3DirectorEditor {
         this.syncFromWidgets();
         this.updateModeUI();
         this.updateSelectionUI();
+        this._initActiveSceneId();
+        this.renderSceneNavBar();
+        this.renderShotNavBar();
+        void this.refreshSegmentCacheStatus();
         this.commit(true, { syncTimeline: false });
         this._observeViewportResize();
         this.scheduleRender();
@@ -1298,6 +1445,23 @@ class MiniMaxH3DirectorEditor {
                         refAudios: clean.refAudios || [],
                         refVideos: clean.refVideos || [],
                         genImage: clean.genImage || { imageFile: "" },
+                        // Phase B / Stage C per-segment fields must survive to the widget JSON:
+                        // backend reads castId/locationId (资产注入) & stateChange (状态跟踪).
+                        // 字段缺失（undefined）在 JSON.stringify 中会被省略 → 后端走命名匹配/默认；
+                        // 显式空串表示用户选了「无」→ 后端不注入。
+                        castId: clean.castId,
+                        locationId: clean.locationId,
+                        castManual: clean.castManual,
+                        locationManual: clean.locationManual,
+                        stateChange: clean.stateChange,
+                        smartTail: clean.smartTail,
+                        // Scene Manager：本段所属场景（timeline.scenes[].id）。
+                        sceneId: clean.sceneId,
+                        // 阶段 D：衔接模式（auto/ref2va/fl2va）——后端 gen_timeline 据此路由。
+                        continuityMode: clean.continuityMode,
+                        // 里程碑 B：关键镜头标记（二级一致性检测）——三态覆盖：
+                        // undefined/"auto"=有资产注入即自动检测、true=强制、false=跳过。
+                        consistencyCheck: clean.consistencyCheck,
                     };
                 }),
                 ...this._runSelectionPayload(),
@@ -1420,6 +1584,33 @@ class MiniMaxH3DirectorEditor {
         this.root.className = "bd-wrap";
         this.root.innerHTML = `<style>${STYLES}</style>`;
 
+        // UI 2.1 P1：场景优先控制台头部（替代 4 tab 导航栏）。
+        // 行1：场景身份（🎬 场景名 · 地点 · 时间 + 镜头数/时长/进度）+ 动作按钮 + 次要入口。
+        // 行2：场景胶囊栏（原 sceneNavWrap 移入）。时间线=主面板；场景管理/素材库/导出中心=独立 pane。
+        const consoleHead = document.createElement("div");
+        consoleHead.className = "bd-console";
+        consoleHead.setAttribute("data-r", "console-head");
+        consoleHead.innerHTML = `
+            <div class="bd-console-row">
+                <div class="bd-console-scene">
+                    <span class="bd-console-scene-name" data-r="console-scene-name">🎬</span>
+                    <span class="bd-console-scene-meta" data-r="console-scene-meta"></span>
+                </div>
+                <div class="bd-console-actions">
+                    <button type="button" class="bd-btn bd-btn-primary bd-console-btn" data-a="console-shoot" data-i18n="console.continueShooting" data-i18n-title="console.continueShootingTitle">继续拍摄</button>
+                    <button type="button" class="bd-btn bd-btn-primary bd-console-btn" data-a="console-gen-scene" data-i18n="console.genScene" data-i18n-title="console.genSceneTitle">生成场景</button>
+                    <button type="button" class="bd-btn bd-console-btn" data-a="console-export-scene" data-i18n="console.exportScene" data-i18n-title="console.exportSceneTitle">导出场景</button>
+                    <span class="bd-console-sep"></span>
+                    <button type="button" class="bd-console-nav active" data-a="nav-timeline" data-i18n="console.timeline">时间线</button>
+                    <button type="button" class="bd-console-nav" data-a="nav-scenes" data-i18n="console.scenes">场景管理</button>
+                    <button type="button" class="bd-console-nav" data-a="nav-assets" data-i18n="console.assets">素材库</button>
+                    <button type="button" class="bd-console-nav" data-a="nav-export" data-i18n="console.export">导出中心</button>
+                </div>
+            </div>
+            <div class="bd-console-scenes" data-r="console-scenes"></div>`;
+        this.root.appendChild(consoleHead);
+        this.navBar = consoleHead;
+
         const toolbarWrap = document.createElement("div");
         toolbarWrap.className = "bd-toolbar-wrap";
         toolbarWrap.innerHTML = `
@@ -1457,9 +1648,60 @@ class MiniMaxH3DirectorEditor {
         this.smartSplitMsgEl = toolbarWrap.querySelector('[data-r="smart-split-msg"]');
         this.langToggleBtn = toolbarWrap.querySelector('[data-a="lang-toggle"]');
 
+        // 第三优先级 UI 重构：顶部固定生成栏（导航 tab 与工具栏之间）。
+        // 范围三选一（全部/当前场景/选中）+ 生成按钮 + 运行状态（原底部 run-status 移入）。
+        const genbarWrap = document.createElement("div");
+        genbarWrap.className = "bd-genbar";
+        genbarWrap.setAttribute("data-r", "genbar");
+        genbarWrap.innerHTML = `
+            <div class="bd-genbar-left">
+                <div class="bd-genbar-dd" data-r="gen-menu">
+                    <button type="button" class="bd-genbar-dd-btn" data-a="gen-menu" data-r="gen-menu-btn" data-i18n="genbar.act.all">全部镜头 ▾</button>
+                    <div class="bd-genbar-dd-pop hidden" data-r="gen-menu-pop">
+                        <button type="button" class="bd-genbar-dd-item active" data-a="gen-act-all" data-i18n="genbar.act.all">全部镜头</button>
+                        <button type="button" class="bd-genbar-dd-item" data-a="gen-act-current" data-i18n="genbar.act.current">生成当前镜头</button>
+                        <button type="button" class="bd-genbar-dd-item" data-a="gen-act-select" data-i18n="genbar.act.select">生成选中镜头</button>
+                        <button type="button" class="bd-genbar-dd-item" data-a="gen-act-scene" data-i18n="genbar.act.scene">生成当前场景</button>
+                        <button type="button" class="bd-genbar-dd-item" data-a="gen-act-pending" data-i18n="genbar.act.pending">生成所有未完成</button>
+                        <button type="button" class="bd-genbar-dd-item" data-a="gen-act-failed" data-i18n="genbar.act.failed">重新生成失败镜头</button>
+                    </div>
+                </div>
+                <button type="button" class="bd-genbar-run" data-a="gen-run" data-i18n="genbar.run">生成</button>
+                <span class="bd-genbar-summary ready" data-r="genbar-summary"></span>
+            </div>
+            <div class="bd-run-status idle" data-r="run-status">
+                <div class="bd-run-title" data-r="run-title" data-i18n="run.titleIdle">运行状态：待命</div>
+                <div class="bd-run-detail" data-r="run-detail" data-i18n="run.detailIdle">队列执行时将显示当前片段与阶段进度</div>
+                <div class="bd-run-select-bar hidden" data-r="run-select-bar">
+                    <span data-r="run-select-summary" data-i18n="run.summaryAllSegments">将运行全部片段</span>
+                </div>
+                <div class="bd-run-bars">
+                    <div class="bd-run-bar" data-i18n-title="run.bar.overall"><div class="bd-run-bar-fill" data-r="run-overall" style="width:0%"></div></div>
+                    <div class="bd-run-bar bd-run-bar-sub" data-i18n-title="run.bar.phase"><div class="bd-run-bar-fill" data-r="run-phase" style="width:0%"></div></div>
+                </div>
+            </div>`;
+        this.root.insertBefore(genbarWrap, toolbarWrap);
+        this.genbarWrap = genbarWrap;
+        this.genbarSummaryEl = genbarWrap.querySelector('[data-r="genbar-summary"]');
+
         this.mainBody = document.createElement("div");
         this.mainBody.className = "bd-main";
         this.root.appendChild(this.mainBody);
+
+        // 第一优先级 UI 重构：Scene+Shot 导航（场景优先控制台第 2 行 = 场景胶囊栏）。
+        const sceneNavWrap = document.createElement("div");
+        sceneNavWrap.className = "bd-scene-nav";
+        sceneNavWrap.setAttribute("data-r", "scene-nav");
+        this.sceneNavWrap = sceneNavWrap;
+        const consoleScenesRow = this.root.querySelector('[data-r="console-scenes"]');
+        if (consoleScenesRow) consoleScenesRow.appendChild(sceneNavWrap);
+        else this.mainBody.appendChild(sceneNavWrap);
+
+        const shotNavWrap = document.createElement("div");
+        shotNavWrap.className = "bd-shot-nav";
+        shotNavWrap.setAttribute("data-r", "shot-nav");
+        this.shotNavWrap = shotNavWrap;
+        this.mainBody.appendChild(shotNavWrap);
 
         const stage = document.createElement("div");
         stage.className = "bd-stage hidden";
@@ -1559,8 +1801,10 @@ class MiniMaxH3DirectorEditor {
             <span class="bd-meta hidden" data-r="out-hint"></span>
             <label data-i18n="output.exportMode.label" data-i18n-title="tooltip.exportMode">导出方式</label>
             <select class="bd-select" data-r="out-export-mode" data-i18n-title="tooltip.exportMode">
-                <option value="all" data-i18n="output.exportMode.all">全部导出</option>
-                <option value="segments" data-i18n="output.exportMode.segments">分段导出</option>
+                <option value="scene" data-i18n="output.exportMode.scene">场景导出</option>
+                <option value="movie" data-i18n="output.exportMode.movie">全片导出</option>
+                <option value="segments" data-i18n="output.exportMode.segments">分镜导出</option>
+                <option value="all" data-i18n="output.exportMode.all">全片导出（内存合并）</option>
             </select>
             <span class="hidden" data-r="out-max-frames-wrap" hidden aria-hidden="true">
                 <label data-i18n="output.maxFrames">最大帧数</label>
@@ -1663,6 +1907,21 @@ class MiniMaxH3DirectorEditor {
         this.batchHint = batchUi.hint;
         this.batchI2vNotice = batchUi.i2vNotice;
         this.batchAddBtn = batchUi.addBtn;
+        this.batchAssetsPanel = batchUi.assetsPanel;
+        this.batchAssetsCast = batchUi.assetsCast;
+        this.batchAssetsLoc = batchUi.assetsLoc;
+        this.batchAssetsCastDef = batchUi.assetsCastDef;
+        this.batchAssetsLocDef = batchUi.assetsLocDef;
+        this.batchAssetsCastAdd = batchUi.assetsCastAdd;
+        this.batchAssetsLocAdd = batchUi.assetsLocAdd;
+        this.batchAssetsProp = batchUi.assetsProp;
+        this.batchAssetsStyle = batchUi.assetsStyle;
+        this.batchAssetsPropAdd = batchUi.assetsPropAdd;
+        this.batchAssetsStyleAdd = batchUi.assetsStyleAdd;
+        this.batchStateWrap = batchUi.stateWrap;
+        this.batchStateCb = batchUi.stateCb;
+        this.batchSmartTailWrap = batchUi.smartTailWrap;
+        this.batchSmartTailCb = batchUi.smartTailCb;
         wireBatchRunSelectControls(this, batchUi);
 
         this.fl2vUi = mountFl2vPanel(this.mainBody);
@@ -1672,20 +1931,38 @@ class MiniMaxH3DirectorEditor {
         }
         bindFl2vEvents(this);
 
-        const runStatus = document.createElement("div");
-        runStatus.className = "bd-run-status idle";
-        runStatus.dataset.r = "run-status";
-        runStatus.innerHTML = `
-            <div class="bd-run-title" data-r="run-title" data-i18n="run.titleIdle">运行状态：待命</div>
-            <div class="bd-run-detail" data-r="run-detail" data-i18n="run.detailIdle">队列执行时将显示当前片段与阶段进度</div>
-            <div class="bd-run-select-bar hidden" data-r="run-select-bar">
-                <span data-r="run-select-summary" data-i18n="run.summaryAllSegments">将运行全部片段</span>
-            </div>
-            <div class="bd-run-bars">
-                <div class="bd-run-bar" data-i18n-title="run.bar.overall"><div class="bd-run-bar-fill" data-r="run-overall" style="width:0%"></div></div>
-                <div class="bd-run-bar bd-run-bar-sub" data-i18n-title="run.bar.phase"><div class="bd-run-bar-fill" data-r="run-phase" style="width:0%"></div></div>
-            </div>`;
-        this.root.appendChild(runStatus);
+        // 第四优先级：高级设置折叠面板（时间线底部，所有模式可见）。
+        // Qwen3-VL 视觉反馈从 batch 独立「AI 导演设置」面板迁入本面板（batch 面板移除）。
+        this.advancedPanel = mountAdvancedPanel(this.mainBody, this);
+
+        // 运行状态已在第三优先级移入顶部生成栏（.bd-genbar 内 .bd-run-status）。
+        // 原底部 runStatus 移除：生成控制 + 进度统一固定在节点顶部。
+
+        // Scene Manager pane：场景管理 / 素材库 / 导出中心（独立视图，默认隐藏）。
+        // 场景管理由 minimax_scene_manager.js 填充；素材库/导出中心由 image_batch 资产升级填充。
+        this.scenesPane = document.createElement("div");
+        this.scenesPane.className = "bd-nav-pane hidden";
+        this.scenesPane.setAttribute("data-r", "nav-pane-scenes");
+        this.sceneManagerPanel = mountSceneManagerPanel(this.scenesPane, this);
+        this.sceneManagerPanel?.attachEditor?.(this);
+        this.sceneManagerPanel?.syncFromWidgets?.();
+        this.root.appendChild(this.scenesPane);
+
+        this.assetsPane = document.createElement("div");
+        this.assetsPane.className = "bd-nav-pane hidden";
+        this.assetsPane.setAttribute("data-r", "nav-pane-assets");
+        this.assetLibraryPanel = mountAssetLibraryPanel(this.assetsPane, this);
+        this.assetLibraryPanel?.attachEditor?.(this);
+        this.assetLibraryPanel?.syncFromWidgets?.();
+        this.root.appendChild(this.assetsPane);
+
+        this.exportPane = document.createElement("div");
+        this.exportPane.className = "bd-nav-pane hidden";
+        this.exportPane.setAttribute("data-r", "nav-pane-export");
+        this.exportCenterPanel = mountExportCenterPanel(this.exportPane, this);
+        this.exportCenterPanel?.attachEditor?.(this);
+        this.exportCenterPanel?.syncFromWidgets?.();
+        this.root.appendChild(this.exportPane);
 
         this.container.appendChild(this.root);
 
@@ -1819,6 +2096,33 @@ class MiniMaxH3DirectorEditor {
             if (!el) return;
             el.onclick = (e) => { stopDomEvent(e); fn(); };
         };
+        // Scene Manager 顶部导航 tab 切换（时间线 / 场景管理 / 素材库 / 导出中心）。
+        const setActiveNavTab = (tab) => {
+            const tabs = { timeline: this.mainBody, scenes: this.scenesPane, assets: this.assetsPane, export: this.exportPane };
+            for (const [key, pane] of Object.entries(tabs)) {
+                if (pane) pane.classList.toggle("hidden", key !== tab);
+            }
+            if (this.navBar) {
+                this.navBar.querySelectorAll(".bd-console-nav").forEach((btn) => {
+                    const btnTab = (btn.dataset.a || "").replace("nav-", "");
+                    btn.classList.toggle("active", btnTab === tab);
+                });
+            }
+            // 切到场景管理/素材库/导出中心时刷新（段归属/资产/镜头可能已在时间线里变化）。
+            if (tab === "scenes") this.sceneManagerPanel?.syncFromWidgets?.();
+            if (tab === "assets") this.assetLibraryPanel?.syncFromWidgets?.();
+            if (tab === "export") this.exportCenterPanel?.syncFromWidgets?.();
+            this._activeNavTab = tab;
+        };
+        this.setActiveNavTab = setActiveNavTab;
+        bind('[data-a="nav-timeline"]', () => setActiveNavTab("timeline"));
+        bind('[data-a="nav-scenes"]', () => setActiveNavTab("scenes"));
+        bind('[data-a="nav-assets"]', () => setActiveNavTab("assets"));
+        bind('[data-a="nav-export"]', () => setActiveNavTab("export"));
+        // UI 2.1 P1：场景优先控制台动作按钮（继续拍摄 / 生成场景 / 导出场景）。
+        bind('[data-a="console-shoot"]', () => this.continueShooting());
+        bind('[data-a="console-gen-scene"]', () => { this.setGenScope("scene"); this.runDirectorGeneration(); });
+        bind('[data-a="console-export-scene"]', () => exportScene(this, this.activeSceneId()));
         bind('[data-a="video"]', () => this.pickVideoFile());
         bind('[data-a="fl2v-add-shot"]', () => openFl2vUpload(this));
         bind('[data-a="r2v-add-group"]', () => addImageBatchGroup(this));
@@ -1828,6 +2132,14 @@ class MiniMaxH3DirectorEditor {
         bind('[data-a="smart-split"]', () => { void this.smartSplit(); });
         bind('[data-a="del-split"]', () => this.deleteSelectedSplitPoint());
         bind('[data-a="run-select-toggle"]', () => this.toggleRunSelectMode());
+        bind('[data-a="gen-menu"]', () => this.toggleGenMenu());
+        bind('[data-a="gen-act-all"]', () => this.pickGenScope("all"));
+        bind('[data-a="gen-act-current"]', () => this.pickGenScope("current"));
+        bind('[data-a="gen-act-select"]', () => this.pickGenScope("select"));
+        bind('[data-a="gen-act-scene"]', () => this.pickGenScope("scene"));
+        bind('[data-a="gen-act-pending"]', () => this.pickGenScope("pending"));
+        bind('[data-a="gen-act-failed"]', () => this.pickGenScope("failed"));
+        bind('[data-a="gen-run"]', () => this.runDirectorGeneration());
         bind('[data-a="del"]', () => this.deleteSelectedSegment());
         bind('[data-a="mode-global"]', () => this.setEditMode("global"));
         bind('[data-a="mode-segment"]', () => this.setEditMode("segment"));
@@ -2269,6 +2581,9 @@ class MiniMaxH3DirectorEditor {
             } else {
                 this.normalizeRunSelection();
             }
+        } else if (this._genScope === "select") {
+            // 关闭选择运行时，「选中」范围无意义，回退到「全部」。
+            this._genScope = "all";
         }
         this.updateRunSelectUI();
         this.commit(false, { syncTimeline: true });
@@ -2344,6 +2659,7 @@ class MiniMaxH3DirectorEditor {
     _clearLiveRunSelection() {
         this.timeline.runSelectEnabled = false;
         this.timeline.runSelection = [];
+        if (this._genScope !== "all") this._genScope = "all";
     }
 
     _runSelectionPayload() {
@@ -2846,7 +3162,6 @@ class MiniMaxH3DirectorEditor {
         // fl2v / r2v use the main timeline track; other batch + gen hide it.
         const hideTimeline = (isBatch && !isR2v) || isGen;
         const hideVideoUpload = hideTimeline || NO_VIDEO_UPLOAD_TASKS.has(taskKey) || isR2v;
-        const showBatchExport = (isBatch && isVideoBatchTask(taskKey)) || isFl2v;
         // t2v / i2v / r2v: never show source-video upload (fl2v keeps "上传图片").
         this.btnVideo?.classList.toggle("hidden", (hideVideoUpload && !isFl2v) || isR2v);
         this.btnVideoAppend?.classList.toggle("hidden", hideVideoUpload || isFl2v || isR2v);
@@ -2938,17 +3253,16 @@ class MiniMaxH3DirectorEditor {
             this.outHint.classList.toggle("hidden", !showHint);
             this.outHint.textContent = showHint ? genLayoutHint(this.getTaskKey()) : "";
         }
-        const isVideoEditTask = taskKey === "v2v" || taskKey === "rv2v";
-        this.outAudioWrap?.classList.toggle("hidden", !isVideoEditTask);
+        // UI 2.1 P6：导出方式 / 最大帧数 / 声音 收进底部「高级设置」面板（导出设置 / 音频 组），
+        // 头部不再显示这三个快捷控件；保留 DOM 元素以防其他引用失效，仅强制 hidden。
+        this.outAudioWrap?.classList.add("hidden");
         if (this.outExportMode) {
-            this.outExportMode.disabled = (isBatch || isFl2v) && !showBatchExport;
-            this.outExportMode.classList.toggle("hidden", (isBatch || isFl2v) && !showBatchExport);
-            this.outExportMode.previousElementSibling?.classList.toggle("hidden", (isBatch || isFl2v) && !showBatchExport);
+            this.outExportMode.classList.add("hidden");
+            this.outExportMode.previousElementSibling?.classList.add("hidden");
         }
         if (this.outMaxFrames) {
-            this.outMaxFrames.disabled = (isBatch || isFl2v) && !showBatchExport;
-            this.outMaxFrames.classList.toggle("hidden", (isBatch || isFl2v) && !showBatchExport);
-            this.outMaxFrames.previousElementSibling?.classList.toggle("hidden", (isBatch || isFl2v) && !showBatchExport);
+            this.outMaxFrames.classList.add("hidden");
+            this.outMaxFrames.previousElementSibling?.classList.add("hidden");
         }
 
         if ((isGen || isBatch || isFl2v) && prev === "video") {
@@ -3846,11 +4160,13 @@ class MiniMaxH3DirectorEditor {
         this.root?.classList.toggle("locale-zh", getLocale() !== "en");
         applyI18nDom(this.root);
         applyDirectorWidgetLabels(this.node);
+        this.advancedPanel?.syncFromWidgets?.();
         this.populateTaskSelect(this.globalTask, this.taskTypeWidget?.value || this.globalTask?.value);
         this.refreshAspectSelectLabels();
         // Re-apply dynamic UI strings that overwrite data-i18n nodes.
         this.updateVideoNameLabel?.();
         this.updateRunSelectUI?.();
+        this.updateGenScopeUI?.();
         this.updateOutputPreview?.();
         this.updateSelectionUI?.();
         this.refreshLoopButtonTitle?.();
@@ -3926,7 +4242,7 @@ class MiniMaxH3DirectorEditor {
             megapixels: DEFAULT_MEGAPIXELS,
             multiple: MINIMAX_CANVAS_MULTIPLE,
             longEdge: 848, width: 848, height: 480,
-            maxExportFrames: 0, exportMode: "all",
+            maxExportFrames: 0, exportMode: "scene",
             audioMode: "generate",
             continuityEnabled: false, continuityOverlapFrames: 9,
         };
@@ -3963,7 +4279,10 @@ class MiniMaxH3DirectorEditor {
         if (this.outW) this.outW.value = String(out.width ?? 864);
         if (this.outH) this.outH.value = String(out.height ?? 480);
         if (this.outMaxFrames) this.outMaxFrames.value = String(out.maxExportFrames ?? 0);
-        if (this.outExportMode) this.outExportMode.value = out.exportMode === "segments" ? "segments" : "all";
+        if (this.outExportMode) {
+            const em = String(out.exportMode || "scene").toLowerCase();
+            this.outExportMode.value = ["scene", "movie", "segments", "all"].includes(em) ? em : "scene";
+        }
         if (this.outAudioMode) {
             const am = normalizeAudioMode(out.audioMode);
             this.outAudioMode.value = am;
@@ -3983,11 +4302,14 @@ class MiniMaxH3DirectorEditor {
     }
 
     updateSegmentContinuityUI() {
-        // MiniMax H3 Director: segment continuity / SCAIL UI removed.
+        // MiniMax H3 Director: SCAIL / video-timeline segment-continuity UI is removed.
+        // fl2v keeps continuityEnabled as its auto first-frame handoff toggle (controlled
+        // by the fl2v panel checkbox), so only force it off outside fl2v mode.
         if (this.segmentContinuityWrap) {
             this.segmentContinuityWrap.classList.add("hidden");
             this.segmentContinuityWrap.hidden = true;
         }
+        if (this.isFl2vMode()) return;
         if (this.timeline?.output) {
             this.timeline.output.continuityEnabled = false;
         }
@@ -4173,7 +4495,7 @@ class MiniMaxH3DirectorEditor {
             megapixels: DEFAULT_MEGAPIXELS,
             multiple: MINIMAX_CANVAS_MULTIPLE,
             longEdge: 848, width: 848, height: 480,
-            maxExportFrames: 0, exportMode: "all",
+            maxExportFrames: 0, exportMode: "scene",
             audioMode: "generate",
             continuityEnabled: false, continuityOverlapFrames: 9,
         };
@@ -4221,7 +4543,8 @@ class MiniMaxH3DirectorEditor {
             const n = parseInt(value, 10);
             this.timeline.output.maxExportFrames = Number.isFinite(n) && n > 0 ? n : 0;
         } else if (key === "exportMode") {
-            this.timeline.output.exportMode = value === "segments" ? "segments" : "all";
+            const v = String(value || "").toLowerCase();
+            this.timeline.output.exportMode = ["scene", "movie", "segments", "all"].includes(v) ? v : "scene";
         } else if (key === "audioMode") {
             this.timeline.output.audioMode = normalizeAudioMode(value);
         } else if (key === "continuityEnabled") {
@@ -4300,7 +4623,7 @@ class MiniMaxH3DirectorEditor {
             width: resolved.width,
             height: resolved.height,
             maxExportFrames: prevOut.maxExportFrames ?? 0,
-            exportMode: prevOut.exportMode ?? "all",
+            exportMode: prevOut.exportMode ?? "scene",
             audioMode: normalizeAudioMode(prevOut.audioMode),
             continuityEnabled: isContinuityEnabled(prevOut),
             continuityOverlapFrames: Math.max(1, Math.min(81,
@@ -4330,14 +4653,16 @@ class MiniMaxH3DirectorEditor {
         this.timeline.frameRate = this.getFrameRate();
         this.timeline.output = this.timeline.output || {
             mode: "long_edge", longEdge: 864, width: 864, height: 480,
-            maxExportFrames: 0, exportMode: "all",
+            maxExportFrames: 0, exportMode: "scene",
             audioMode: "generate",
             continuityEnabled: false, continuityOverlapFrames: 9,
         };
         if (this.timeline.output.audioMode == null) {
             this.timeline.output.audioMode = "generate";
         }
-        if (this.segmentContinuityCb) {
+        // fl2v controls continuityEnabled via its own 自动续首帧 checkbox; the hidden
+        // video-timeline SCAIL checkbox must not overwrite it.
+        if (!this.isFl2vMode() && this.segmentContinuityCb) {
             this.timeline.output.continuityEnabled = !!this.segmentContinuityCb.checked;
         }
         if (this.segmentContinuityOverlap) {
@@ -4369,6 +4694,16 @@ class MiniMaxH3DirectorEditor {
         this.seekBar.max = Math.max(0, this.getTotalFrames() - 1);
         if (syncTimeline) this.scheduleTimelineSync();
         if (!skipRender) this.scheduleRender();
+        // 第一优先级 UI 重构：场景/镜头导航条跟随数据刷新（场景增删、段归属变化）。
+        if (this.sceneNavWrap) {
+            this._initActiveSceneId();
+            this.renderSceneNavBar();
+            this.renderShotNavBar();
+        }
+        // 第三优先级：生成栏范围摘要跟随刷新（runSelection/场景归属/镜头数变化）。
+        if (this.genbarWrap) this.updateGenScopeUI();
+        // 第四优先级：高级设置面板镜像原生 widget（seed/steps/sampler…）与 Qwen 状态。
+        this.advancedPanel?.syncFromWidgets?.();
         if (this.isGlobalMode() && taskUsesReferenceImages(this.getTaskKey())) {
             this.renderRefSlots(this.timeline.global.refs, this.globalRefsBox, true);
         } else if (this.isImageBatch()) this.renderImageBatchGroups();
@@ -7011,6 +7346,459 @@ class MiniMaxH3DirectorEditor {
             if (this.genSegFc) this.genSegFc.value = fc;
         }
         if (this.isFl2vMode()) updateFl2vDetailUI(this);
+        // 第一优先级 UI 重构：镜头导航条高亮跟随选中（场景栏由 commit/场景操作刷新）。
+        if (this.shotNavWrap) this.renderShotNavBar();
+    }
+
+    /* ---------------------------------------------------------------------------
+     * 第一优先级 UI 重构：Scene+Shot 导航条（时间线页顶部）
+     * 场景胶囊栏（全部/各场景/新建场景）+ 当前场景镜头胶囊条（点击选中镜头）。
+     * 纯增量视图：不修改任何数据，只读 timeline.scenes / segments[].sceneId，
+     * 通过 selectedIndex 与现有 canvas/卡片选择天然同步。
+     * ------------------------------------------------------------------------- */
+
+    /** 当前激活场景 id（空串 = 全部镜头）。 */
+    activeSceneId() {
+        return this._activeSceneId || "";
+    }
+
+    /** 初始化激活场景：优先取当前选中镜头所属场景，否则第一个场景，否则 ""（全部）。 */
+    _initActiveSceneId() {
+        const segs = this.timeline?.segments || [];
+        const selSeg = segs[this.selectedIndex];
+        if (selSeg?.sceneId) { this._activeSceneId = selSeg.sceneId; return; }
+        const scenes = getScenesBlock(this);
+        this._activeSceneId = scenes?.[0]?.id || "";
+    }
+
+    /** 设置激活场景并跳到该场景第一个镜头。sceneId="" 表示全部镜头。 */
+    setActiveScene(sceneId) {
+        this._activeSceneId = sceneId || "";
+        const shots = this._shotsInScene(this._activeSceneId);
+        if (shots.length) {
+            this.selectedIndex = shots[0];
+            this.updateSelectionUI();
+        }
+        this.renderSceneNavBar();
+        this.renderShotNavBar();
+        if (this.genbarWrap) this.updateGenScopeUI();
+        this.scheduleRender();
+    }
+
+    /** 返回属于某场景的镜头索引数组（保持 timeline 顺序）。sceneId="" → 全部。 */
+    _shotsInScene(sceneId) {
+        const segs = this.timeline?.segments || [];
+        if (!sceneId) return segs.map((_, i) => i);
+        return segs
+            .map((s, i) => (s.sceneId === sceneId ? i : -1))
+            .filter((i) => i >= 0);
+    }
+
+    // ---------- 第三优先级：顶部固定生成栏 ----------
+
+    /** 设置生成范围：all 全部 / current 当前镜头 / select 选中 / scene 当前场景 / pending 未完成 / failed 失败。纯 UI 状态，不落 timeline。 */
+    setGenScope(scope) {
+        if (!["all", "current", "select", "scene", "pending", "failed"].includes(scope)) return;
+        // 不支持「选择运行」的任务（单镜头/部分 batch）只能跑全部。
+        if (scope !== "all" && !this.supportsRunSelect()) scope = "all";
+        this._genScope = scope;
+        if (scope === "select" && this.supportsRunSelect() && !this.isRunSelectEnabled()) {
+            // 进入「选中」范围时自动打开选择运行模式，方便用户勾选镜头。
+            this.toggleRunSelectMode();
+        }
+        this.updateGenScopeUI();
+        this.commit(false, { syncTimeline: false });
+    }
+
+    /** 可运行镜头的真实段索引集合（fl2v 只取起始帧段）。 */
+    _runnableIndices() {
+        if (this.isFl2vMode()) return fl2vStartIndices(this);
+        return Array.from({ length: this.getRunnableSegmentCount() }, (_, i) => i);
+    }
+
+    /** 未完成镜头索引（状态不是 success 的可运行段）。 */
+    _pendingRunIndices() {
+        const st = this._segCacheStatus;
+        return this._runnableIndices().filter((i) => st?.get(i) !== "success");
+    }
+
+    /** 失败镜头索引（状态为 failed 的可运行段）。 */
+    _failedRunIndices() {
+        const st = this._segCacheStatus;
+        return this._runnableIndices().filter((i) => st?.get(i) === "failed");
+    }
+
+    /** 当前镜头实际会运行的段索引（fl2v 只运行自身可运行的镜头；其他模式即当前段）。 */
+    _currentRunIndices() {
+        const i = this.selectedIndex;
+        if (!this.isFl2vMode()) return i >= 0 && i < this.getRunnableSegmentCount() ? [i] : [];
+        // fl2v：shots 世界每镜独立（1:1 segments）。无首帧且未开启自动续接的镜头
+        // 会被后端 _normalize_shots 跳过，这里同样不运行（返回空 → 下拉禁用），
+        // 不再回退到上一个可运行镜头。
+        return fl2vStartIndices(this).includes(i) ? [i] : [];
+    }
+
+    /** 指定范围实际会运行的镜头数量。 */
+    _genScopeCount(scope) {
+        const n = this.getRunnableSegmentCount();
+        if (!n) return 0;
+        if (scope === "all") return n;
+        if (scope === "current") return this._currentRunIndices().length;
+        if (scope === "select") return (this.timeline.runSelection || []).length;
+        if (scope === "scene") return this._sceneRunIndices().length;
+        if (scope === "pending") return this._pendingRunIndices().length;
+        if (scope === "failed") return this._failedRunIndices().length;
+        return 0;
+    }
+
+    /** 下拉菜单某项是否禁用。 */
+    _genActDisabled(scope) {
+        const n = this.getRunnableSegmentCount();
+        if (!n) return true;
+        const canSelect = this.supportsRunSelect();
+        if (scope === "all") return false;
+        if (scope === "current") return !this._currentRunIndices().length;
+        if (scope === "select") return !canSelect || !(this.timeline.runSelection || []).length;
+        if (scope === "scene") return !canSelect || !this._sceneRunIndices().length;
+        if (scope === "pending") return !this._pendingRunIndices().length;
+        if (scope === "failed") return !this._failedRunIndices().length;
+        return false;
+    }
+
+    /** 打开/关闭生成范围下拉，打开时注册一次性外部点击关闭。 */
+    toggleGenMenu() {
+        if (!this.genbarWrap) return;
+        const pop = this.genbarWrap.querySelector('[data-r="gen-menu-pop"]');
+        if (!pop) return;
+        const wasHidden = pop.classList.contains("hidden");
+        pop.classList.toggle("hidden", !wasHidden);
+        if (wasHidden) {
+            const close = (ev) => {
+                // 点击菜单内部（下拉按钮/菜单项）不在此关闭，由各自 handler 负责。
+                const dd = this.genbarWrap?.querySelector(".bd-genbar-dd");
+                if (dd && dd.contains(ev.target)) return;
+                document.removeEventListener("click", close, true);
+                pop.classList.add("hidden");
+            };
+            document.addEventListener("click", close, true);
+        }
+    }
+
+    /** 从下拉选中一个生成范围并关闭菜单。 */
+    pickGenScope(scope) {
+        this.setGenScope(scope);
+        const pop = this.genbarWrap?.querySelector('[data-r="gen-menu-pop"]');
+        pop?.classList.add("hidden");
+    }
+
+    updateGenScopeUI() {
+        if (!this.genbarWrap) return;
+        const scope = this._genScope;
+        const n = this.getRunnableSegmentCount();
+        const canSelect = this.supportsRunSelect();
+        const effectiveScope = scope !== "all" && !canSelect ? "all" : scope;
+        const btn = this.genbarWrap.querySelector('[data-r="gen-menu-btn"]');
+        if (btn) btn.textContent = `${t(`genbar.act.${effectiveScope}`)} ▾`;
+        const pop = this.genbarWrap.querySelector('[data-r="gen-menu-pop"]');
+        if (pop) {
+            pop.querySelectorAll('[data-a^="gen-act-"]').forEach((it) => {
+                const v = (it.dataset.a || "").replace("gen-act-", "");
+                it.classList.toggle("active", v === effectiveScope);
+                it.disabled = this._genActDisabled(v);
+            });
+        }
+        const sum = this.genbarSummaryEl;
+        if (!sum) return;
+        const cnt = this._genScopeCount(effectiveScope);
+        const unit = t(this.isImageBatch() ? "unit.group" : "unit.segment");
+        const key = effectiveScope === "current" ? "genbar.summaryCurrent"
+            : effectiveScope === "pending" ? "genbar.summaryPending"
+            : effectiveScope === "failed" ? "genbar.summaryFailed"
+            : `genbar.summary${effectiveScope.charAt(0).toUpperCase() + effectiveScope.slice(1)}`;
+        if (cnt > 0) {
+            sum.textContent = t(key, { n: cnt, unit });
+            sum.className = "bd-genbar-summary ready";
+        } else {
+            const emptyKey = `${key}Empty`;
+            sum.textContent = t(emptyKey, { unit });
+            sum.className = "bd-genbar-summary warn";
+        }
+    }
+
+    /** 当前场景范围下实际会运行的镜头索引（fl2v 只保留起始帧段）。 */
+    _sceneRunIndices() {
+        const shots = this._shotsInScene(this.activeSceneId());
+        if (this.isFl2vMode()) {
+            const starts = new Set(fl2vStartIndices(this));
+            return shots.filter((i) => starts.has(i));
+        }
+        return shots;
+    }
+
+    /** 按当前范围设置 runSelection 并触发 ComfyUI 队列生成。 */
+    runDirectorGeneration() {
+        const n = this.getRunnableSegmentCount();
+        if (!n) return;
+        const scope = this._genScope;
+        if (scope === "scene") {
+            const sel = this._sceneRunIndices();
+            if (!sel.length) return;
+            this.timeline.runSelectEnabled = true;
+            this.timeline.runSelection = sel;
+        } else if (scope === "current") {
+            const sel = this._currentRunIndices();
+            if (!sel.length) { this.updateGenScopeUI(); return; }
+            this.timeline.runSelectEnabled = true;
+            this.timeline.runSelection = sel;
+        } else if (scope === "select") {
+            if (!this.supportsRunSelect()) return;
+            this.timeline.runSelectEnabled = true;
+            this.normalizeRunSelection();
+            if (!(this.timeline.runSelection || []).length) {
+                this.updateGenScopeUI();
+                return;
+            }
+        } else if (scope === "pending") {
+            const sel = this._pendingRunIndices();
+            if (!sel.length) { this.updateGenScopeUI(); return; }
+            this.timeline.runSelectEnabled = true;
+            this.timeline.runSelection = sel;
+        } else if (scope === "failed") {
+            const sel = this._failedRunIndices();
+            if (!sel.length) { this.updateGenScopeUI(); return; }
+            this.timeline.runSelectEnabled = true;
+            this.timeline.runSelection = sel;
+        } else {
+            this.timeline.runSelectEnabled = false;
+            this.timeline.runSelection = [];
+        }
+        this.updateRunSelectUI();
+        this.commit(true, { syncTimeline: true });
+        // queuePrompt 的 patch 会 flushDirectors → 各节点 flushTimelineSync，确保 payload 最新。
+        if (window.app?.queuePrompt) window.app.queuePrompt(1, "Director");
+    }
+
+    /** 渲染场景控制栏：场景下拉 + 新建场景按钮 + 镜头过滤下拉。 */
+    renderSceneNavBar() {
+        const wrap = this.sceneNavWrap;
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        const scenes = getScenesBlock(this).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const active = this.activeSceneId();
+
+        // 场景选择下拉。
+        const sel = document.createElement("select");
+        sel.className = "bd-scene-sel";
+        sel.setAttribute("data-r", "scene-sel");
+        sel.title = t("sceneNav.selectSceneTitle");
+        const allOpt = document.createElement("option");
+        allOpt.value = "";
+        allOpt.textContent = t("sceneNav.all", { n: this.timeline?.segments?.length || 0 });
+        sel.appendChild(allOpt);
+        for (const sc of scenes) {
+            const n = this._shotsInScene(sc.id).length;
+            const label = sc.name || `Scene ${String(sc.order ?? 0 + 1).padStart(2, "0")}`;
+            const opt = document.createElement("option");
+            opt.value = sc.id;
+            opt.textContent = `${label} · ${n}`;
+            opt.title = `${label}${sc.location ? " · " + sc.location : ""}${sc.time ? " · " + sc.time : ""}`;
+            sel.appendChild(opt);
+        }
+        sel.value = active || "";
+        sel.addEventListener("change", () => this.setActiveScene(sel.value));
+        wrap.appendChild(sel);
+
+        // 新建场景按钮。
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "bd-scene-chip-add";
+        addBtn.setAttribute("data-a", "scene-add2");
+        addBtn.textContent = t("sceneNav.addScene");
+        addBtn.addEventListener("click", (e) => {
+            stopDomEvent(e);
+            const sc = addScene(this);
+            this.setActiveScene(sc?.id || "");
+            this.sceneManagerPanel?.syncFromWidgets?.();
+        });
+        wrap.appendChild(addBtn);
+
+        // 分隔 + 镜头过滤下拉。
+        const sep = document.createElement("span");
+        sep.className = "bd-console-sep";
+        wrap.appendChild(sep);
+        const fLabel = document.createElement("span");
+        fLabel.className = "bd-filter-label";
+        fLabel.textContent = t("sceneNav.filterLabel");
+        wrap.appendChild(fLabel);
+        const fsel = document.createElement("select");
+        fsel.className = "bd-filter-sel";
+        fsel.setAttribute("data-r", "shot-filter-sel");
+        fsel.title = t("sceneNav.filterTitle");
+        const fopts = [
+            ["", "sceneNav.filterAll"],
+            ["pending", "sceneNav.filterPending"],
+            ["failed", "sceneNav.filterFailed"],
+            ["selected", "sceneNav.filterSelected"],
+        ];
+        for (const [v, k] of fopts) {
+            const o = document.createElement("option");
+            o.value = v;
+            o.textContent = t(k);
+            fsel.appendChild(o);
+        }
+        fsel.value = this._shotFilter || "";
+        fsel.addEventListener("change", () => this.setShotFilter(fsel.value));
+        wrap.appendChild(fsel);
+
+        this.renderConsoleHead?.();
+    }
+
+    /** 设置镜头过滤："" 全部 / pending 未生成 / failed 失败 / selected 选中。仅影响镜头导航条显示。 */
+    setShotFilter(filter) {
+        if (!["", "pending", "failed", "selected"].includes(filter)) return;
+        this._shotFilter = filter;
+        this.renderShotNavBar();
+        const fsel = this.root?.querySelector('[data-r="shot-filter-sel"]');
+        if (fsel && fsel.value !== filter) fsel.value = filter;
+        this.renderConsoleHead?.();
+    }
+
+    /** 渲染镜头导航条（当前场景的镜头胶囊，受过滤影响）。 */
+    renderShotNavBar() {
+        const wrap = this.shotNavWrap;
+        if (!wrap) return;
+        wrap.innerHTML = "";
+        let idxs = this._shotsInScene(this.activeSceneId());
+        const st = this._segCacheStatus;
+        const flt = this._shotFilter || "";
+        if (flt === "pending") idxs = idxs.filter((i) => st?.get(i) !== "success");
+        else if (flt === "failed") idxs = idxs.filter((i) => st?.get(i) === "failed");
+        else if (flt === "selected") {
+            const sel = new Set(this.timeline?.runSelection || []);
+            idxs = idxs.filter((i) => sel.has(i));
+        }
+        if (!idxs.length) {
+            const empty = document.createElement("span");
+            empty.className = "bd-shot-nav-empty";
+            empty.textContent = flt ? t("sceneNav.filterEmpty") : t("sceneNav.noShots");
+            wrap.appendChild(empty);
+            this.renderConsoleHead?.();
+            return;
+        }
+        const segs = this.timeline?.segments || [];
+        for (const i of idxs) {
+            const seg = segs[i];
+            const dur = framesToDurationSec(seg.frameCount ?? seg.length ?? 0, this.getFrameRate?.() || 24);
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "bd-shot-chip" + (i === this.selectedIndex ? " active" : "");
+            const st = this._segCacheStatus?.get?.(i);
+            const dot = document.createElement("span");
+            dot.className = "bd-shot-dot";
+            if (st === "success") chip.classList.add("done");
+            else if (st === "running") dot.classList.add("st-running");
+            else if (st === "review") dot.classList.add("st-review");
+            else if (st === "failed") dot.classList.add("st-failed");
+            if (st) dot.title = t(`shotStatus.${st}`);
+            chip.title = seg.prompt ? (seg.prompt.slice(0, 60) || "") : t("sceneNav.noPrompt");
+            const label = document.createElement("span");
+            label.textContent = `${String(i + 1).padStart(2, "0")} ${formatMediaDuration(dur)}`;
+            chip.append(dot, label);
+            chip.onclick = (e) => {
+                stopDomEvent(e);
+                this.selectedIndex = i;
+                this.renderShotNavBar();
+                this.updateSelectionUI();
+                this.scheduleRender();
+            };
+            wrap.appendChild(chip);
+        }
+        this.renderConsoleHead?.();
+    }
+
+    /** UI 2.1 P1：刷新场景优先控制台头部（场景名/元信息/动作按钮可用性）。 */
+    renderConsoleHead() {
+        const nameEl = this.root?.querySelector('[data-r="console-scene-name"]');
+        const metaEl = this.root?.querySelector('[data-r="console-scene-meta"]');
+        const shootBtn = this.root?.querySelector('[data-a="console-shoot"]');
+        const genBtn = this.root?.querySelector('[data-a="console-gen-scene"]');
+        const expBtn = this.root?.querySelector('[data-a="console-export-scene"]');
+        const segs = this.timeline?.segments || [];
+        const scenes = getScenesBlock(this);
+        const active = this.activeSceneId();
+        const sc = active ? scenes.find((s) => s.id === active) : undefined;
+        const idxs = this._shotsInScene(active);
+        const dur = idxs.reduce((s, i) => s + (Number(segs[i]?.durationSec) || 0), 0);
+        const done = idxs.filter((i) => this._segCacheStatus?.get?.(i) === "success").length;
+        const label = sc?.name || (active ? sc?.id || "?" : t("console.allShots"));
+        const locTime = [sc?.location, sc?.time].filter(Boolean).join(" · ");
+        if (nameEl) nameEl.textContent = `🎬 ${label}${locTime ? " · " + locTime : ""}`;
+        if (metaEl) metaEl.textContent = t("console.meta", { shots: idxs.length, dur: formatMediaDuration(dur), done, total: idxs.length });
+        const canScene = idxs.length > 0;
+        const hasActiveScene = !!active;
+        if (shootBtn) shootBtn.disabled = !this.isR2vBatch?.() || (!hasActiveScene && !scenes.length);
+        if (genBtn) genBtn.disabled = !canScene || !hasActiveScene || !this.supportsRunSelect?.();
+        if (expBtn) expBtn.disabled = !canScene || !hasActiveScene;
+    }
+
+    /** UI 2.1 P1：继续拍摄——在当前场景末尾新建一镜，继承场景资产/上一镜状态/自动续接。 */
+    continueShooting() {
+        if (!this.isR2vBatch?.()) return;
+        const segs = this.timeline?.segments || [];
+        const scenes = getScenesBlock(this);
+        let sceneId = this.activeSceneId();
+        if (!sceneId && scenes.length) sceneId = scenes[0].id;
+        const sc = sceneId ? scenes.find((s) => s.id === sceneId) : undefined;
+        // 前序镜头：当前场景最后一镜（无场景归属时取全片最后一镜）。
+        const idxs = this._shotsInScene(sceneId);
+        const prev = idxs.length ? segs[idxs[idxs.length - 1]] : segs[segs.length - 1];
+        const taskKey = resolveTaskKey(this.getTaskKey?.() || this.taskTypeWidget?.value);
+        const seg = newBatchSegment({
+            durationSec: defaultDurationSec(taskKey),
+            negativePrompt: "",
+            sceneId: sceneId || prev?.sceneId || "",
+            castId: prev?.castId ?? sc?.defaultCastId ?? "",
+            locationId: prev?.locationId ?? sc?.defaultLocationId ?? "",
+            stateChange: prev?.stateChange || "",
+            continuityMode: "auto",
+            smartTail: true,
+        });
+        // 插入当前场景镜头末尾（normalize 会重建 start/length）。
+        const insertAt = idxs.length ? idxs[idxs.length - 1] + 1 : segs.length;
+        segs.splice(insertAt, 0, seg);
+        normalizeImageBatchSegments(this);
+        this.selectedIndex = insertAt;
+        this.renderImageBatchGroups();
+        this.commit();
+        this.updateVideoNameLabel?.();
+        this.updateDomWidgetHeight?.();
+        this.renderShotNavBar();
+        this.renderConsoleHead();
+        // 滚动到新镜头并聚焦提示词输入。
+        const card = this.batchList?.querySelector(".bd-batch-card.selected");
+        card?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        const ta = card?.querySelector("textarea");
+        ta?.focus?.();
+    }
+
+    /** 加载镜头状态灯（成功=磁盘缓存；生成中/待检查/失败=运行时状态）。 */
+    async refreshSegmentCacheStatus() {
+        const nodeId = this.node?.id;
+        if (!nodeId) return;
+        try {
+            const resp = await api.fetchApi(`/minimax/director/segment_status?node_id=${encodeURIComponent(nodeId)}`);
+            const data = await resp.json();
+            const map = new Map();
+            for (const i of (Array.isArray(data?.cached) ? data.cached.map(Number) : [])) map.set(i, "success");
+            for (const [k, v] of Object.entries(data?.states || {})) map.set(Number(k), v);
+            this._segCacheStatus = map;
+            this.renderShotNavBar();
+            this.renderConsoleHead?.();
+            // 状态灯/下载按钮依赖 _segCacheStatus，异步取回后必须重绘卡片本体，
+            // 否则 r2v/fl2v 卡的下载按钮停留在旧的「运行中/未生成」态。
+            if (this.isImageBatch?.()) this.renderImageBatchGroups();
+            else if (this.isFl2vMode?.()) this.updateFl2vDetailUI?.(this);
+        } catch (_) { /* 非致命：忽略网络/解析错误 */ }
     }
 
     renderRefSlots(refs, box, isGlobal) {
@@ -7471,7 +8259,7 @@ class MiniMaxH3DirectorEditor {
         btn.removeAttribute("data-i18n-title");
     }
 
-    setRunProgress(detail) {
+    async setRunProgress(detail) {
         if (!this.runStatusEl) return;
         const timelineTotal = this.timeline?.segments?.length || 0;
         const runTotal = Math.max(detail.segment_total || this.getRunProgressSegmentTotal(), 1);
@@ -7504,6 +8292,11 @@ class MiniMaxH3DirectorEditor {
             this.runPhaseEl.style.width = "100%";
             this._runHighlightSeg = -1;
             this.updateRunSelectUI();
+            // 镜头状态灯：运行结束，拉最终状态（含待检查/失败标记）。
+            // await：确保下方 renderImageBatchGroups 用「成功」态重绘，而不是旧的运行中态。
+            await this.refreshSegmentCacheStatus();
+            // 生成下拉摘要（未完成/失败计数）依赖状态灯，运行结束后刷新。
+            this.updateGenScopeUI?.();
             if (this.isImageBatch()) this.renderImageBatchGroups();
             else this.scheduleRender();
             return;
@@ -7514,6 +8307,10 @@ class MiniMaxH3DirectorEditor {
         // under the title in the same green accent and reads as a layout glitch.
         this.runSelectBar?.classList.add("hidden");
         this._runHighlightSeg = timelineSeg - 1;
+        // 镜头状态灯：当前正在生成的段实时标记「生成中」。
+        if (!this._segCacheStatus) this._segCacheStatus = new Map();
+        this._segCacheStatus.set(timelineSeg - 1, "running");
+        this.renderShotNavBar();
         let title;
         if (detail.phase === "plan") {
             title = runTotal > 1 ? t("run.titlePlanning", { n: runTotal, phase: phaseLabel }) : phaseLabel;
@@ -7572,6 +8369,10 @@ class MiniMaxH3DirectorEditor {
         if (this.runPhaseEl) this.runPhaseEl.style.width = "0%";
         this._runHighlightSeg = -1;
         this.updateRunSelectUI();
+        // 镜头状态灯：节点报错 → 拉最终状态（后端已标记失败/待检查的段）。
+        this.refreshSegmentCacheStatus();
+        // 生成下拉摘要（未完成/失败计数）依赖状态灯，报错后刷新。
+        this.updateGenScopeUI?.();
         this.scheduleRender();
     }
 
@@ -7960,9 +8761,10 @@ app.registerExtension({
             const r = onCreated?.apply(this, arguments);
             normalizeDirectorOutputs(this);
             applyDirectorWidgetLabels(this);
+            applyDirectorWidgetVisibility(this);
             // ComfyUI may attach seed's control_after_generate combo after onNodeCreated.
-            queueMicrotask(() => applyDirectorWidgetLabels(this));
-            setTimeout(() => applyDirectorWidgetLabels(this), 0);
+            queueMicrotask(() => { applyDirectorWidgetLabels(this); applyDirectorWidgetVisibility(this); });
+            setTimeout(() => { applyDirectorWidgetLabels(this); applyDirectorWidgetVisibility(this); }, 0);
             this.size = [1000, 680];
 
             // Idempotent: avoid a second DOM stack if onNodeCreated is wrapped twice.

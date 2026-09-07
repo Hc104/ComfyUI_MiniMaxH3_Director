@@ -1,0 +1,758 @@
+{
+  "project": {
+    "title": "山雨客栈",
+    "source_file": "山雨客栈.md"
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_01",
+      "title": "第一场：山雨楼外",
+      "location_name": "山雨楼外",
+      "time": "黄昏",
+      "weather": "雨",
+      "shots": [
+        {
+          "shot_id": "shot_01",
+          "source_text": "镜头 1：雨刚停，山雾从林间漫向山间客栈「山雨楼」，二层木楼檐角挂着昏黄灯笼，湿漉漉的石阶映着暖光，门前老槐树滴着水珠。",
+          "duration_sec": 5,
+          "characters": [],
+          "props": [
+            {
+              "name": "昏黄灯笼"
+            },
+            {
+              "name": "旧剑匣"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_001",
+              "name": "山雨楼",
+              "type": "architecture",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "none",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_002",
+              "name": "旧剑匣",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_003",
+              "name": "老槐树",
+              "type": "creature",
+              "source": "script",
+              "confidence": 0.85,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "山雾",
+              "type": "environment",
+              "confidence": 0.9
+            },
+            {
+              "name": "昏黄灯笼",
+              "type": "effect",
+              "confidence": 0.85
+            },
+            {
+              "name": "湿漉漉的石阶",
+              "type": "environment",
+              "confidence": 0.8
+            },
+            {
+              "name": "雨后水珠",
+              "type": "effect",
+              "confidence": 0.8
+            }
+          ],
+          "actions": [
+            "山雾漫向客栈",
+            "檐角挂着灯笼",
+            "石阶映暖光",
+            "老槐树滴水"
+          ],
+          "emotion": "静谧朦胧的雨后黄昏",
+          "dialogue": [],
+          "visual_intent": "全景俯拍山雾笼罩的山雨楼，暖黄灯笼与湿石阶形成冷暖对比，老槐树水珠特写增强雨后质感"
+        },
+        {
+          "shot_id": "shot_02",
+          "source_text": "镜头 2：沈青崖背着旧剑匣从山道走来，衣袂带风，走到客栈门前石阶停步，抬头望一眼檐角灯笼，低头推门。",
+          "duration_sec": 6,
+          "characters": [
+            {
+              "name": "沈青崖",
+              "role": "背剑而行的江湖人士"
+            }
+          ],
+          "props": [
+            {
+              "name": "旧剑匣"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_004",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_005",
+              "name": "山雨楼",
+              "type": "architecture",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "none",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_006",
+              "name": "旧剑匣",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "黄昏余晖",
+              "type": "environment",
+              "confidence": 0.85
+            },
+            {
+              "name": "衣袂飘动",
+              "type": "effect",
+              "confidence": 0.8
+            },
+            {
+              "name": "雨后湿滑石阶",
+              "type": "environment",
+              "confidence": 0.8
+            }
+          ],
+          "actions": [
+            "背着剑匣行走",
+            "衣袂带风",
+            "抬头望灯笼",
+            "推门"
+          ],
+          "emotion": "孤寂中带着探寻的期待",
+          "dialogue": [],
+          "visual_intent": "中景跟拍沈青崖背影，逆光突出衣袂飘动，镜头从仰视灯笼渐切至推门动作"
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_02",
+      "title": "第二场：客栈大堂",
+      "location_name": "客栈大堂",
+      "time": "黄昏",
+      "weather": "雨",
+      "shots": [
+        {
+          "shot_id": "shot_01",
+          "source_text": "镜头 3：沈青崖推门走进大堂，暖黄灯火扑面而来。柜台后柳如烟正低头擦拭青瓷碗，闻声抬眼，二人目光相接，大堂安静片刻。",
+          "duration_sec": 6,
+          "characters": [
+            {
+              "name": "沈青崖",
+              "role": ""
+            },
+            {
+              "name": "柳如烟",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "青瓷碗"
+            },
+            {
+              "name": "剑架"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_007",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_008",
+              "name": "柳如烟",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_009",
+              "name": "青瓷碗",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_010",
+              "name": "剑架",
+              "type": "architecture",
+              "source": "script",
+              "confidence": 0.85,
+              "asset_requirement": "none",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "黄昏",
+              "type": "environment",
+              "confidence": 0.9
+            },
+            {
+              "name": "雨",
+              "type": "environment",
+              "confidence": 0.9
+            },
+            {
+              "name": "暖黄灯火",
+              "type": "effect",
+              "confidence": 0.85
+            }
+          ],
+          "actions": [
+            "推门走进",
+            "抬眼",
+            "目光相接"
+          ],
+          "emotion": "静谧",
+          "dialogue": [],
+          "visual_intent": "中景镜头，沈青崖推门入内，柳如烟在柜台后抬头，两人对视时大堂灯光映出剪影"
+        },
+        {
+          "shot_id": "shot_02",
+          "source_text": "镜头 4：柳如烟放下茶碗，从柜台后绕过，端着一碗热茶走向堂中，语气平淡：「客官，落座歇脚，茶先暖着。」",
+          "duration_sec": 5,
+          "characters": [
+            {
+              "name": "柳如烟",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "茶碗"
+            },
+            {
+              "name": "热茶"
+            },
+            {
+              "name": "柜台"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_011",
+              "name": "柳如烟",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_012",
+              "name": "茶碗",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_013",
+              "name": "柜台",
+              "type": "architecture",
+              "source": "script",
+              "confidence": 0.85,
+              "asset_requirement": "none",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "暖黄灯火",
+              "type": "effect",
+              "confidence": 0.85
+            }
+          ],
+          "actions": [
+            "放下茶碗",
+            "绕过柜台",
+            "端茶走向堂中"
+          ],
+          "emotion": "平淡",
+          "dialogue": [
+            {
+              "speaker": "柳如烟",
+              "text": "客官，落座歇脚，茶先暖着。"
+            }
+          ],
+          "visual_intent": "低角度镜头，柳如烟手持茶碗从柜台后走出，暖光在瓷碗上形成反光"
+        },
+        {
+          "shot_id": "shot_03",
+          "source_text": "镜头 5：沈青崖落座，接过茶碗却不喝，指节轻敲桌面，目光落在柜台上方的空剑架，低声：「这里…可曾收过一把旧剑？」",
+          "duration_sec": 5,
+          "characters": [
+            {
+              "name": "沈青崖",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "茶碗"
+            },
+            {
+              "name": "桌"
+            },
+            {
+              "name": "旧剑"
+            },
+            {
+              "name": "剑架"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_014",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_015",
+              "name": "茶碗",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_016",
+              "name": "剑架",
+              "type": "architecture",
+              "source": "script",
+              "confidence": 0.85,
+              "asset_requirement": "none",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "暖黄灯火",
+              "type": "effect",
+              "confidence": 0.85
+            }
+          ],
+          "actions": [
+            "落座",
+            "指节敲桌",
+            "目光凝视剑架"
+          ],
+          "emotion": "凝重",
+          "dialogue": [
+            {
+              "speaker": "沈青崖",
+              "text": "这里…可曾收过一把旧剑？"
+            }
+          ],
+          "visual_intent": "特写镜头，茶碗边缘水汽氤氲，沈青崖手指敲击桌面的震动波纹"
+        },
+        {
+          "shot_id": "shot_04",
+          "source_text": "镜头 6：客栈大门「砰」地被推开，夜风灌入，蒙面人逆光立在门口，黑纱蒙面只露双眼，腰悬窄刀，寒气漫进大堂，烛火乱晃。",
+          "duration_sec": 5,
+          "characters": [
+            {
+              "name": "蒙面人",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "窄刀"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_017",
+              "name": "蒙面人",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_018",
+              "name": "窄刀",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "夜风",
+              "type": "effect",
+              "confidence": 0.85
+            },
+            {
+              "name": "寒气",
+              "type": "effect",
+              "confidence": 0.8
+            },
+            {
+              "name": "烛火乱晃",
+              "type": "effect",
+              "confidence": 0.8
+            }
+          ],
+          "actions": [
+            "推开大门",
+            "逆光站立"
+          ],
+          "emotion": "压迫",
+          "dialogue": [],
+          "visual_intent": "逆光大特写，蒙面人黑纱在风中飘动，窄刀寒光刺破黄昏余晖"
+        },
+        {
+          "shot_id": "shot_05",
+          "source_text": "镜头 7：蒙面人一步步走近，沉声：「剑，交出来。」沈青崖起身，横剑护在柳如烟身前；柳如烟退后半步，手已按住柜台下的短刃。三人成三角对峙。",
+          "duration_sec": 6,
+          "characters": [
+            {
+              "name": "蒙面人",
+              "role": ""
+            },
+            {
+              "name": "沈青崖",
+              "role": ""
+            },
+            {
+              "name": "柳如烟",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "短刃"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_019",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_020",
+              "name": "柳如烟",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_021",
+              "name": "蒙面人",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_022",
+              "name": "短刃",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "寒气",
+              "type": "effect",
+              "confidence": 0.8
+            },
+            {
+              "name": "烛火乱晃",
+              "type": "effect",
+              "confidence": 0.8
+            }
+          ],
+          "actions": [
+            "横剑护前",
+            "退后半步",
+            "按住短刃"
+          ],
+          "emotion": "紧张",
+          "dialogue": [
+            {
+              "speaker": "蒙面人",
+              "text": "剑，交出来。"
+            }
+          ],
+          "visual_intent": "三角构图，沈青崖剑尖指向蒙面人，柳如烟短刃压在柜台下"
+        },
+        {
+          "shot_id": "shot_06",
+          "source_text": "镜头 8：蒙面人拔刀跃起，沈青崖侧身避过，旧剑出鞘寒光一闪，两人短兵相接，烛台被劲风打翻，酒坛碎裂；柳如烟退到柜台后按下短刃，观战戒备。",
+          "duration_sec": 5,
+          "characters": [
+            {
+              "name": "蒙面人",
+              "role": ""
+            },
+            {
+              "name": "柳如烟",
+              "role": ""
+            },
+            {
+              "name": "沈青崖",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "刀"
+            },
+            {
+              "name": "旧剑"
+            },
+            {
+              "name": "短刃"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_023",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_024",
+              "name": "柳如烟",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_025",
+              "name": "蒙面人",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_026",
+              "name": "旧剑",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_027",
+              "name": "短刃",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "寒气",
+              "type": "effect",
+              "confidence": 0.8
+            },
+            {
+              "name": "烛火乱晃",
+              "type": "effect",
+              "confidence": 0.8
+            }
+          ],
+          "actions": [
+            "拔刀跃起",
+            "侧身避过",
+            "旧剑出鞘",
+            "退到柜台后"
+          ],
+          "emotion": "激烈",
+          "dialogue": [],
+          "visual_intent": "高速镜头，剑光与烛火碎片同时飞溅，柳如烟短刃反射冷光"
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_03",
+      "title": "第三场：后院石阶",
+      "location_name": "后院石阶",
+      "time": "清晨",
+      "weather": "晴",
+      "shots": [
+        {
+          "shot_id": "shot_01",
+          "source_text": "镜头 9：天明雨停，后院石阶上沈青崖坐着拭剑，旧剑匣放在膝边；柳如烟端来一碗热茶放在他身侧石阶上，没多言语，转身回屋。远处山雾散开，晨光洒落。",
+          "duration_sec": 5,
+          "characters": [
+            {
+              "name": "沈青崖",
+              "role": ""
+            },
+            {
+              "name": "柳如烟",
+              "role": ""
+            }
+          ],
+          "props": [
+            {
+              "name": "剑"
+            },
+            {
+              "name": "热茶"
+            },
+            {
+              "name": "旧剑匣"
+            },
+            {
+              "name": "茶碗"
+            }
+          ],
+          "entities": [
+            {
+              "entity_id": "ent_028",
+              "name": "沈青崖",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_029",
+              "name": "柳如烟",
+              "type": "character",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_030",
+              "name": "后院石阶",
+              "type": "location",
+              "source": "script",
+              "confidence": 0.95,
+              "asset_requirement": "required",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_031",
+              "name": "旧剑匣",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.9,
+              "asset_requirement": "recommended",
+              "aliases": []
+            },
+            {
+              "entity_id": "ent_032",
+              "name": "茶碗",
+              "type": "prop",
+              "source": "script",
+              "confidence": 0.85,
+              "asset_requirement": "recommended",
+              "aliases": []
+            }
+          ],
+          "visual_elements": [
+            {
+              "name": "晨光",
+              "type": "effect",
+              "confidence": 0.8
+            },
+            {
+              "name": "山雾",
+              "type": "environment",
+              "confidence": 0.75
+            }
+          ],
+          "actions": [
+            "沈青崖拭剑",
+            "柳如烟端茶",
+            "柳如烟放置茶碗",
+            "柳如烟转身回屋"
+          ],
+          "emotion": "静谧中带着疏离感",
+          "dialogue": [],
+          "visual_intent": "沈青崖侧坐石阶拭剑特写，柳如烟手持茶碗从画面右侧入镜，茶碗放置于石阶边缘后转身离场，晨光从画面左上角洒落"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "status": "valid",
+    "errors": [],
+    "warnings": []
+  }
+}

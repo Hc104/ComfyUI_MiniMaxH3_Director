@@ -1,0 +1,117 @@
+P0-① 真实回归：《山雨客栈》Shot 1/4/7 三类来源标记 + 逐字可追溯
+
+〔0〕fixture 解析 + 关键镜头存在：
+  ✓ ProductionPlan.from_dict 成功
+  ✓ 9 镜全部进入 DirectorIntent
+  ✓ 回归镜头 scene_01:shot_01 存在
+  ✓ 回归镜头 scene_02:shot_02 存在
+  ✓ 回归镜头 scene_02:shot_05 存在
+
+〔1〕scene_01:shot_01
+  ① 三层结构：
+  ✓    L1 原文非空且为 dict 顶层字段
+  ✓    L2 retained_facts 非空（逐字原文事实）
+  ✓    L2 emotion（AI）字段存在
+  ✓    L2 composition（AI，=visual_intent）存在
+  ✓    L2 continuity.camera_desc（RULE 运镜）存在
+  ✓    L3 三段全非空
+  ② 字段级 provenance：
+  ✓    user_original_intent = USER
+  ✓    retained_facts = USER
+  ✓    emotion = AI
+  ✓    composition = AI
+  ✓    camera_position/movement/continuity = RULE
+  ④ 逐字可追溯（L1 → L3）：
+  ✓    时间轴前缀
+  ✓    L1 字段 = 剧本原文逐字（原文最高优先级未被覆盖）
+  ✓    全部 retained_facts 逐字进描述（原文事实逐字保留）
+  ✓    AI 构图补充句进入描述（不覆盖原文）
+  ⑤ 结构化 references + 可读标签：
+  ✓    references 数量 = 边界检查后 entities 数量（同一集合）
+  ✓    每条含 entity_key/entity_name/image_file
+  ✓    文本内 [REF: 名] 标签齐全且数量与 references 一致
+  ⑥ 段落级 provenance（三类来源）：
+  ✓    desc.provenance 三键齐全
+  ✓    三类来源总条数 > 0
+  ✓    soundscape.provenance 存在
+  ✓    music.provenance 存在
+
+〔2〕scene_02:shot_02
+  ① 三层结构：
+  ✓    L1 原文非空且为 dict 顶层字段
+  ✓    L2 retained_facts 非空（逐字原文事实）
+  ✓    L2 emotion（AI）字段存在
+  ✓    L2 composition（AI，=visual_intent）存在
+  ✓    L2 continuity.camera_desc（RULE 运镜）存在
+  ✓    L3 三段全非空
+  ② 字段级 provenance：
+  ✓    user_original_intent = USER
+  ✓    retained_facts = USER
+  ✓    emotion = AI
+  ✓    composition = AI
+  ✓    camera_position/movement/continuity = RULE
+  ④ 逐字可追溯（L1 → L3）：
+  ✓    时间轴前缀
+  ✓    L1 字段 = 剧本原文逐字（原文最高优先级未被覆盖）
+  ✓    全部 retained_facts 逐字进描述（原文事实逐字保留）
+  ✓    AI 构图补充句进入描述（不覆盖原文）
+  ⑤ 结构化 references + 可读标签：
+  ✓    references 数量 = 边界检查后 entities 数量（同一集合）
+  ✓    每条含 entity_key/entity_name/image_file
+  ✓    文本内 [REF: 名] 标签齐全且数量与 references 一致
+  ⑥ 段落级 provenance（三类来源）：
+  ✓    desc.provenance 三键齐全
+  ✓    三类来源总条数 > 0
+  ✓    soundscape.provenance 存在
+  ✓    music.provenance 存在
+
+〔3〕scene_02:shot_05
+  ① 三层结构：
+  ✓    L1 原文非空且为 dict 顶层字段
+  ✓    L2 retained_facts 非空（逐字原文事实）
+  ✓    L2 emotion（AI）字段存在
+  ✓    L2 composition（AI，=visual_intent）存在
+  ✓    L2 continuity.camera_desc（RULE 运镜）存在
+  ✓    L3 三段全非空
+  ② 字段级 provenance：
+  ✓    user_original_intent = USER
+  ✓    retained_facts = USER
+  ✓    emotion = AI
+  ✓    composition = AI
+  ✓    camera_position/movement/continuity = RULE
+  ④ 逐字可追溯（L1 → L3）：
+  ✓    时间轴前缀
+  ✓    L1 字段 = 剧本原文逐字（原文最高优先级未被覆盖）
+  ✓    全部 retained_facts 逐字进描述（原文事实逐字保留）
+  ✓    AI 构图补充句进入描述（不覆盖原文）
+  ⑤ 结构化 references + 可读标签：
+  ✓    references 数量 = 边界检查后 entities 数量（同一集合）
+  ✓    每条含 entity_key/entity_name/image_file
+  ✓    文本内 [REF: 名] 标签齐全且数量与 references 一致
+  ⑥ 段落级 provenance（三类来源）：
+  ✓    desc.provenance 三键齐全
+  ✓    三类来源总条数 > 0
+  ✓    soundscape.provenance 存在
+  ✓    music.provenance 存在
+
+〔附加〕对白逐字保留：
+  ✓    scene_02:shot_02 对白「客官，落座歇脚，茶先暖着。」逐字在 H3 描述
+  ✓    scene_02:shot_05 对白「剑，交出来。」逐字在 H3 描述
+
+〔附加〕实体边界检查（用户拍板 ②）：
+  ✓    shot7 实体=本镜来源（沈青崖/柳如烟/蒙面人/短刃）
+  ✓    shot1 越界「旧剑匣」被丢弃，仅留山雨楼/老槐树
+
+〔附加〕纯规则零显存：
+  ✓    director_intent.py 无 unload
+  ✓    director_intent.py 无 urlopen
+  ✓    director_intent.py 无 keep_alive
+  ✓    director_intent.py 无 torch.
+  ✓    director_intent.py 无 requests.
+  ✓    h3_prompt_builder.py 无 unload
+  ✓    h3_prompt_builder.py 无 urlopen
+  ✓    h3_prompt_builder.py 无 keep_alive
+  ✓    h3_prompt_builder.py 无 torch.
+  ✓    h3_prompt_builder.py 无 requests.
+
+结果：85 PASS / 0 FAIL

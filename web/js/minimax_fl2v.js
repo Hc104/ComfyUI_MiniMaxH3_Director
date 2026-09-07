@@ -18,11 +18,20 @@ import {
     roundDurationSec,
 } from "./minimax_gen_timeline.js";
 import { t } from "./minimax_i18n.js";
+import { downloadSegmentMp4 } from "./minimax_image_batch.js";
 
 export const FL2V_STYLES = `
 .bd-fl2v-detail-wrap{width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:8px}
 .bd-fl2v-hint{color:#aaa;font-size:11px;line-height:1.45;background:#181818;border:1px solid #333;border-radius:6px;padding:8px 10px}
 .bd-fl2v-hint b{color:#4fff8f;font-weight:600}
+.bd-fl2v-auto{display:flex;align-items:center;gap:8px;color:#bbb;font-size:12px;background:#161616;border:1px solid #3a3a3a;border-radius:6px;padding:7px 10px;cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.bd-fl2v-auto:hover{border-color:#5a5a5a}
+.bd-fl2v-auto.active{border-color:rgba(79,255,143,.55);background:#152018}
+.bd-fl2v-auto.active{color:#dfffe9}
+.bd-fl2v-auto input{width:14px;height:14px;accent-color:#4fff8f;cursor:pointer;flex-shrink:0}
+.bd-fl2v-auto span{line-height:1.3}
+.bd-fl2v-auto select.bd-fl2v-handoff-sel{background:#101010;color:#cfcfcf;border:1px solid #3a3a3a;border-radius:5px;font-size:12px;padding:3px 6px;cursor:pointer;max-width:180px;flex-shrink:1;min-width:0}
+.bd-fl2v-auto select.bd-fl2v-handoff-sel:hover{border-color:#5a5a5a}
 .bd-fl2v-shots{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
 .bd-fl2v-shot{width:220px;box-sizing:border-box;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:default;transition:border-color .15s,opacity .15s}
 .bd-fl2v-shot:hover{border-color:#555}
@@ -32,6 +41,10 @@ export const FL2V_STYLES = `
 .bd-fl2v-shot-head{display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:grab;user-select:none}
 .bd-fl2v-shot-head:active{cursor:grabbing}
 .bd-fl2v-shot-head b{color:#ccc;font-size:12px}
+/* UI 2.2：单镜 mp4 下载按钮（右对齐，与标题同排） */
+.bd-fl2v-shot-dl{margin-left:auto;background:#1c2a3a;border:1px solid #2f5b8a;color:#8fc8ff;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;transition:filter .12s}
+.bd-fl2v-shot-dl:hover:not(:disabled){filter:brightness(1.2)}
+.bd-fl2v-shot-dl:disabled{opacity:.4;cursor:not-allowed}
 .bd-fl2v-shot-meta{color:#888;font-size:10px}
 .bd-fl2v-slots{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .bd-fl2v-slot-wrap{position:relative;min-width:0}
@@ -53,6 +66,17 @@ export const FL2V_STYLES = `
 .bd-fl2v-slot-wrap .x:hover{background:rgba(160,30,30,.95);color:#fff}
 .bd-fl2v-shot-row{display:flex;align-items:center;gap:6px;color:#ddd;font-size:11px}
 .bd-fl2v-shot-row input{width:56px}
+/* UI 2.0 第二优先级（fl2v 收尾）：卡片内提示词摘要 + detail 区镜头标题 */
+.bd-fl2v-shot-prompt{display:flex;align-items:center;gap:5px;font-size:10px;line-height:1.35;border:1px solid #262626;border-radius:4px;padding:4px 6px;cursor:pointer;min-height:16px;max-height:34px;overflow:hidden;background:#111;transition:border-color .12s,background .12s}
+.bd-fl2v-shot-prompt:hover{border-color:#4a4a4a;background:#181818}
+.bd-fl2v-shot-prompt .bd-fl2v-prompt-ic{color:#4fff8f;flex-shrink:0;font-size:9px;font-weight:700}
+.bd-fl2v-shot-prompt.no-prompt .bd-fl2v-prompt-ic{color:#555}
+.bd-fl2v-shot-prompt .bd-fl2v-prompt-txt{color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.bd-fl2v-shot-prompt.no-prompt .bd-fl2v-prompt-txt{color:#666;font-style:italic}
+.bd-fl2v-shot.selected .bd-fl2v-shot-prompt{border-color:rgba(79,255,143,.4);background:#14201a}
+.bd-fl2v-detail-title{display:flex;align-items:baseline;gap:6px;font-size:10px;color:#9db4e8;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:4px}
+.bd-fl2v-detail-title b{color:#eaeaea;font-size:11px;font-weight:650}
+.bd-fl2v-detail .bd-label{margin-top:1px}
 .bd-fl2v-detail{width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px}
 .bd-fl2v-detail.hidden{display:none!important}
 .bd-fl2v-detail .bd-label{color:#888;font-size:10px;margin-top:2px}
@@ -511,10 +535,50 @@ export function packFl2vSegments(editor) {
     return syncFl2vFromShots(editor);
 }
 
+/** 镜像后端 _image_ref_from_raw：判断一条 shot/segment 是否带有效首帧。 */
+function fl2vHasStartImage(item) {
+    if (!item || typeof item !== "object") return false;
+    const s = item.startImage || item.start_image;
+    if (s != null) {
+        if (typeof s === "string") return !!s.trim();
+        if (typeof s === "object") {
+            return !!(
+                s.imageFile
+                || s.imageB64
+                || s.image_file
+                || s.image_b64
+            );
+        }
+        return false;
+    }
+    // segments（fl2v 派生层）不存 startImage，首帧在 genImage/imageFile。
+    return !!(item.genImage?.imageFile || item.imageFile);
+}
+
+/**
+ * 可实际生成镜头的原始下标（shot / segment 下标）。
+ * 镜像后端 _normalize_shots：无首帧的镜头跳过，除非开启「自动续首帧」
+ * （timeline.output.continuityEnabled）且前面已有带首帧的镜头形成续接链。
+ * 避免 UI 显示镜头数量与实际生成镜头数量不一致。
+ */
 export function fl2vStartIndices(editor) {
-    // Every shot is runnable (index = shot / segment index).
-    return (editor.timeline.shots || editor.timeline.segments || [])
-        .map((_, i) => i);
+    const shots = editor.timeline.shots || editor.timeline.segments || [];
+    const autoHandoff = !!(editor.timeline.output || {}).continuityEnabled;
+    const idx = [];
+    let sawStart = false;
+    for (let i = 0; i < shots.length; i++) {
+        // 镜像后端 `if not isinstance(item, dict): continue`：非对象条目硬跳过，
+        // 不参与自动续接链。
+        if (!shots[i] || typeof shots[i] !== "object") continue;
+        if (fl2vHasStartImage(shots[i])) {
+            sawStart = true;
+            idx.push(i);
+            continue;
+        }
+        if (autoHandoff && sawStart) idx.push(i);
+        // 否则：镜像后端跳过该镜头。
+    }
+    return idx;
 }
 
 export function fl2vSampleFrameCount(editor, segIndex) {
@@ -663,9 +727,20 @@ export function mountFl2vPanel(parent) {
             <b data-i18n="panel.fl2v.howToTitle">怎么用</b>：
             <span data-i18n-html="panel.fl2v.hint"></span>
         </div>
+        <label class="bd-fl2v-auto" data-r="fl2v-auto" title="${t("tooltip.fl2vAutoContinuity")}">
+            <input type="checkbox" data-r="fl2v-auto-cb">
+            <span data-i18n="panel.fl2v.autoContinuity">自动续首帧</span>
+        </label>
+        <label class="bd-fl2v-auto" data-r="fl2v-handoff" title="${t("tooltip.fl2vHandoff")}">
+            <span data-i18n="panel.fl2v.handoffLabel">续接方式</span>
+            <select data-r="fl2v-handoff-sel" class="bd-fl2v-handoff-sel">
+                <option value="image" data-i18n="panel.fl2v.handoffImage">参考图续接</option>
+                <option value="video" data-i18n="panel.fl2v.handoffVideo">从视频续接</option>
+            </select>
+        </label>
         <div class="bd-fl2v-shots" data-r="fl2v-shots"></div>
         <div class="bd-fl2v-detail hidden" data-r="fl2v-detail">
-            <span class="bd-label" data-i18n="panel.fl2v.shotPrompt">本镜提示词</span>
+            <div class="bd-fl2v-detail-title"><b data-r="fl2v-detail-shot">镜 1</b><span data-i18n="panel.fl2v.shotPrompt">本镜提示词</span></div>
             <textarea data-r="fl2v-prompt" data-i18n-placeholder="placeholder.fl2vShot" placeholder=""></textarea>
             <textarea data-r="fl2v-negative" class="hidden" hidden aria-hidden="true"></textarea>
         </div>
@@ -677,8 +752,13 @@ export function mountFl2vPanel(parent) {
     return {
         root: wrap,
         hint: wrap.querySelector(".bd-fl2v-hint"),
+        autoCb: wrap.querySelector('[data-r="fl2v-auto-cb"]'),
+        autoLabel: wrap.querySelector('[data-r="fl2v-auto"]'),
+        handoffSel: wrap.querySelector('[data-r="fl2v-handoff-sel"]'),
+        handoffWrap: wrap.querySelector('[data-r="fl2v-handoff"]'),
         shotsEl: wrap.querySelector('[data-r="fl2v-shots"]'),
         detail: wrap.querySelector('[data-r="fl2v-detail"]'),
+        detailShot: wrap.querySelector('[data-r="fl2v-detail-shot"]'),
         prompt: wrap.querySelector('[data-r="fl2v-prompt"]'),
         negative: wrap.querySelector('[data-r="fl2v-negative"]'),
         totalInput: null,
@@ -1023,16 +1103,21 @@ function renderFl2vShotCards(editor) {
         const endUrl = shot.endImage?.imageFile ? fl2vViewUrl(shot.endImage.imageFile) : "";
         const fc = shotFrameCount(shot, fl2vFps(editor));
         const badge = shot.endImage?.imageFile ? t("fl2v.badge.startEnd") : t("fl2v.badge.i2v");
+        const autoHandoff = !!(editor.timeline.output || {}).continuityEnabled;
+        const startPh = !startUrl && autoHandoff && i > 0
+            ? t("panel.fl2v.startAuto")
+            : t("panel.fl2v.startRequired");
         card.innerHTML = `
             <div class="bd-fl2v-shot-head">
                 <b>${t("panel.fl2v.shotN", { n: i + 1 })}</b>
                 <span class="bd-fl2v-shot-meta">${badge} · ${fc}f</span>
+                <button type="button" class="bd-fl2v-shot-dl" data-r="fl2v-shot-dl" title="${t("tooltip.shotDownload")}">${t("shot.download")}</button>
             </div>
             <div class="bd-fl2v-slots">
                 <div class="bd-fl2v-slot-wrap${startUrl ? " has-img" : ""}">
                     <div class="bd-fl2v-slot${startUrl ? " has-img" : ""}" data-slot="start" title="${t("tooltip.fl2vStartSlot")}">
                         <span class="tag start">${t("fl2v.tag.start")}</span>
-                        ${startUrl ? `<img src="${startUrl}" alt="">` : `<span class="ph">${t("panel.fl2v.startRequired")}</span>`}
+                        ${startUrl ? `<img src="${startUrl}" alt="">` : `<span class="ph">${startPh}</span>`}
                     </div>
                     ${startUrl ? `<button type="button" class="x" data-clear="start" title="${t("tooltip.fl2vClear")}" draggable="false">×</button>` : ""}
                 </div>
@@ -1049,7 +1134,41 @@ function renderFl2vShotCards(editor) {
                 <input type="number" class="bd-num" data-r="shot-sec" min="${minDurationSec()}" max="${maxDurationSec()}" step="0.1" value="${shot.durationSec}">
                 ${t("panel.fl2v.seconds")}
             </label>
+            <div class="bd-fl2v-shot-prompt no-prompt" data-r="fl2v-shot-prompt" title="${t("panel.fl2v.shotPrompt")}">
+                <span class="bd-fl2v-prompt-ic">✎</span>
+                <span class="bd-fl2v-prompt-txt"></span>
+            </div>
         `;
+        // UI 2.0 第二优先级（fl2v 收尾）：卡片内提示词摘要——一眼看出该镜是否已写提示词。
+        const promptRow = card.querySelector('[data-r="fl2v-shot-prompt"]');
+        if (promptRow) {
+            const txt = (shot.prompt || "").trim();
+            promptRow.classList.toggle("no-prompt", !txt);
+            promptRow.querySelector(".bd-fl2v-prompt-txt").textContent = txt
+                ? (txt.length > 42 ? txt.slice(0, 42) + "…" : txt)
+                : t("fl2v.promptEmpty");
+            // 点摘要行 = 选中该镜并聚焦提示词（与点卡片头等效）。
+            promptRow.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (editor.selectedIndex !== i) flushFl2vPromptDraft(editor);
+                editor.selectedIndex = i;
+                updateFl2vDetailUI(editor);
+                editor.scheduleRender?.();
+                const ui2 = editor.fl2vUi;
+                if (ui2?.prompt) { ui2.prompt.focus(); ui2.prompt.scrollIntoView({ block: "nearest" }); }
+            });
+        }
+        // UI 2.2：下载本镜 mp4（后端从磁盘缓存编码；未生成则禁用）。
+        const dlBtn = card.querySelector('[data-r="fl2v-shot-dl"]');
+        if (dlBtn) {
+            const st = editor._segCacheStatus?.get?.(i);
+            dlBtn.disabled = st !== "success";
+            if (st !== "success") dlBtn.title = t("tooltip.shotDownloadPending");
+            dlBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                downloadSegmentMp4(editor, i);
+            });
+        }
         card.addEventListener("click", (e) => {
             if (e.target.closest("[data-slot], [data-clear], input, .bd-fl2v-slot-wrap")) return;
             if (editor._fl2vShotDrag || editor._fl2vSlotDrag) return;
@@ -1117,6 +1236,20 @@ export function updateFl2vDetailUI(editor) {
         ui.totalInput.disabled = true;
         ui.totalInput.title = t("tooltip.fl2vTotalInput");
     }
+    if (ui.autoCb) {
+        const out = editor.timeline.output || {};
+        ui.autoCb.checked = !!(out.continuityEnabled || out.continuity_enabled);
+        if (ui.autoLabel) {
+            ui.autoLabel.classList.toggle("active", ui.autoCb.checked);
+        }
+        if (ui.handoffSel) {
+            const hm = (out.handoffMode || out.handoff_mode || "image").toString().toLowerCase();
+            ui.handoffSel.value = hm === "video" ? "video" : "image";
+        }
+        if (ui.handoffWrap) {
+            ui.handoffWrap.style.display = ui.autoCb.checked ? "" : "none";
+        }
+    }
     renderFl2vShotCards(editor);
     updateFl2vToolbarBtns(editor);
 
@@ -1130,6 +1263,9 @@ export function updateFl2vDetailUI(editor) {
         return;
     }
     ui.detail?.classList.remove("hidden");
+    if (ui.detailShot) {
+        ui.detailShot.textContent = t("panel.fl2v.shotN", { n: idx + 1 });
+    }
     const prevIdx = editor._fl2vPromptSegIndex;
     const selectionChanged = prevIdx !== idx;
     if (selectionChanged) flushFl2vPromptDraft(editor);
@@ -1154,6 +1290,26 @@ export function bindFl2vEvents(editor) {
 
     // Total is read-only (sum of shots); ignore edits.
     ui.totalInput?.addEventListener("keydown", (e) => e.stopPropagation());
+
+    // 自动续首帧：上一镜尾帧 → 下一镜首帧
+    ui.autoCb?.addEventListener("change", () => {
+        const checked = !!ui.autoCb.checked;
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.continuityEnabled = checked;
+        editor.commit(false, { syncTimeline: true });
+        editor.scheduleRender();
+        editor.updateDomWidgetHeight?.();
+    });
+
+    // 续接方式：参考图续接(image) / 从视频续接(video)
+    ui.handoffSel?.addEventListener("change", () => {
+        editor.timeline.output = editor.timeline.output || {};
+        editor.timeline.output.continuityEnabled = true; // 切续接方式视为开启自动续接
+        editor.timeline.output.handoffMode = ui.handoffSel.value;
+        editor.commit(false, { syncTimeline: true });
+        editor.scheduleRender();
+        editor.updateDomWidgetHeight?.();
+    });
 
     const promptTargetShot = () => {
         const shots = editor.timeline.shots || [];
@@ -1352,7 +1508,7 @@ export function drawFl2vSegmentThumbnails(editor, ctx, seg, startX, pxWidth, y0,
 export function getFl2vUiHeight(editor) {
     const n = editor.timeline?.shots?.length || 0;
     const rows = Math.max(1, Math.ceil(n / 3));
-    return 420 + rows * 150 + 80;
+    return 470 + rows * 150 + 80;
 }
 
 export function buildFl2vPayloadFields(editor) {

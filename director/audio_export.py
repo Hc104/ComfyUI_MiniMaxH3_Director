@@ -214,7 +214,26 @@ def build_director_audio_outputs(
     log.info("Director audio mode: %s (task=%s)", mode, getattr(plan, "global_task_key", ""))
 
     if mode == AUDIO_MODE_MUTE:
-        return [empty_audio_dict(SILENT_SAMPLE_RATE) for _ in images_out], None
+        # #606/#607 修复（2026-08-17）：0 样本空音频会让下游 CreateVideo/SaveVideo 的
+        # PyAV resampler 对空 AudioFrame 报 [Errno 12] Cannot allocate memory
+        # （av.error.MemoryError @ graph.push）。mute 仍输出静音，但每个输出片段
+        # 按实际帧数生成正确长度的立体声静音（复用 _pad_or_trim_audio_to_frames
+        # 的 None 静音兜底：torch.zeros(1, 2, n_samples)），下游编码器正常消费。
+        silent: list[dict[str, Any]] = []
+        for tensor in images_out:
+            n_frames = int(getattr(tensor, "shape", [0])[0] or 0)
+            if n_frames > 0:
+                silent.append(
+                    _pad_or_trim_audio_to_frames(
+                        None,
+                        frame_count=n_frames,
+                        fps=fps,
+                        sample_rate=SILENT_SAMPLE_RATE,
+                    )
+                )
+            else:
+                silent.append(empty_audio_dict(SILENT_SAMPLE_RATE))
+        return silent, None
 
     # Prefer model audio only in generate mode.
     if mode == AUDIO_MODE_GENERATE and segment_audios:

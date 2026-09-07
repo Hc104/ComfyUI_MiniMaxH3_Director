@@ -1,0 +1,17 @@
+{
+  "scene": "《吐槽成真》片头盲听选段（节选自《我靠吐槽在漫画里封神》，台词出自 director/tests/test_prose_dialogue.py）",
+  "roles": {
+    "linweiwei": { "name": "林薇薇", "desc": "年轻女声" },
+    "guyanchen": { "name": "顾琰宸", "desc": "低沉男声" },
+    "narrator": { "name": "旁白·林晓", "desc": "轻松吐槽感" },
+    "system": { "name": "系统", "desc": "电子音" }
+  },
+  "lines": [
+    { "speaker": "system", "text": "检测到宿主对当前情境吐槽欲望强烈，是否激活吐槽成真功能？" },
+    { "speaker": "narrator", "text": "你倒是说句话啊！那是你男朋友送你的生日礼物，你看见它出现在你闺蜜脖子上，你有点正常人的反应行不行？" },
+    { "speaker": "narrator", "text": "哪怕上去薅她头发呢？憋着这口气，你是要修仙飞升吗？" },
+    { "speaker": "guyanchen", "text": "还有你，林薇薇。跟我一个姓我都嫌晦气，你笑什么笑？你以为你赢了吗？" },
+    { "speaker": "guyanchen", "text": "你知道原著里你活不过三章吗大姐！三章！你连下周的漫画更新都撑不到！" },
+    { "speaker": "linweiwei", "text": "呵，一个连封面都上不去的路人甲，也配对我指手画脚？" }
+  ]
+}

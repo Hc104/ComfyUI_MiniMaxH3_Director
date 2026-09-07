@@ -5,6 +5,8 @@ from __future__ import annotations
 import comfy.samplers
 
 from ..director.executor_core import execute_director_plan_core
+from ..director.project_store import save_timeline_snapshot
+from ..director.segment_status import clear_segment_runtime_state
 from .director_common import (
     finalize_director_outputs,
     prepare_director_plan,
@@ -160,6 +162,15 @@ class MiniMaxH3Director:
         **kwargs,
     ):
         del kwargs
+
+        # MiniMax Studio 集成：每次生成前把 timeline_data 自动快照一份，
+        # SPA「导入 ComfyUI 工程」据此恢复 ProjectModel（用户无需导出/抠 JSON）。
+        save_timeline_snapshot(timeline_data)
+
+        # #93：新 run 开始时清空本节点残留的段运行状态。取消/中断（#91 用
+        # BaseException 兜底）会把当时段标成 failed，若不清空，下一次任务
+        # plan 阶段失败时前端会用这份残留 failed 错标到上一轮的镜头。
+        clear_segment_runtime_state(unique_id)
 
         plan = prepare_director_plan(
             timeline_data=timeline_data,

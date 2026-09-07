@@ -1,0 +1,44 @@
+[
+  {
+    "kind": "cast",
+    "name": "柳如烟",
+    "asset_name": "柳如烟",
+    "image_file": "minimax_studio/assets/柳如烟.png"
+  },
+  {
+    "kind": "cast",
+    "name": "沈青崖",
+    "asset_name": "沈青崖",
+    "image_file": "minimax_studio/assets/沈青崖.png"
+  },
+  {
+    "kind": "cast",
+    "name": "蒙面人",
+    "asset_name": "蒙面人",
+    "image_file": "minimax_studio/assets/蒙面人.png"
+  },
+  {
+    "kind": "location",
+    "name": "客栈大堂",
+    "asset_name": "客栈大堂",
+    "image_file": "minimax_studio/assets/客栈大堂.png"
+  },
+  {
+    "kind": "location",
+    "name": "山雨楼外",
+    "asset_name": "山雨楼外",
+    "image_file": "minimax_studio/assets/山雨楼外.png"
+  },
+  {
+    "kind": "location",
+    "name": "后院石阶",
+    "asset_name": "后院石阶",
+    "image_file": "minimax_studio/assets/后院石阶.png"
+  },
+  {
+    "kind": "prop",
+    "name": "旧剑匣",
+    "asset_name": "旧剑匣",
+    "image_file": "minimax_studio/assets/旧剑匣.png"
+  }
+]

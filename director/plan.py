@@ -49,6 +49,62 @@ class SegmentRef:
 
 
 @dataclass
+class GlobalAsset:
+    """资产库条目（角色 cast / 场景 location / 道具 prop / 风格参考 style）。
+
+    既用于全局资产库（timeline.assets，Phase B），也用于场景素材组
+    （timeline.scenes[].assets，Scene Manager）。每个 r2v 段按 castId/locationId
+    选择自动注入作为"世界锚点"，替代"依赖上一段传过参考图"的链式继承。
+    """
+
+    id: str
+    name: str
+    kind: str  # "cast" | "location" | "prop" | "style"
+    tensor: torch.Tensor | None = None
+    # 来源文件名（timeline 资产条目的 imageFile）。缓存指纹用：替换参考图后
+    # 即使 id/name 不变，image_file 变化也会让该段缓存失效，避免「改图仍出旧画面」。
+    image_file: str = ""
+
+
+@dataclass
+class SceneGroup:
+    """场景组（Scene Manager 一级对象）。
+
+    由前端 timeline.scenes 定义：手动创建、命名、排序。每个场景拥有独立素材组
+    （角色/场景/道具/风格参考），是 Ref2VA 参考图、状态跟踪、Qwen 检测、镜头续接、
+    导出的共同单位。段通过 SegmentPlan.scene_id 归属到场景。
+
+    三级资产结构：Global Asset Library → Scene Asset Group → Shot Reference。
+    本类即中间层「Scene Asset Group」：assets 为该场景的独立素材组，
+    段（Shot）按 scene_id 归属后，优先使用本场景素材组（其次全局默认）。
+    """
+
+    id: str
+    name: str = ""
+    location: str = ""
+    time: str = ""
+    order: int = 0
+    # 场景独立素材组：kind -> [GlobalAsset]。kind 复用 GlobalAsset 的
+    # "cast"/"location"，并扩展 "prop"（道具）/ "style"（风格参考）。
+    assets: dict[str, list[GlobalAsset]] = field(default_factory=dict)
+    # 场景内默认资产引用（指向本场景 assets 里的资产 id），段未手动选择时兜底。
+    default_cast_id: str = ""
+    default_location_id: str = ""
+
+
+@dataclass
+class SceneGroupPlan:
+    """一次场景分组的导出计划：段索引列表 + 显式 Scene 元数据（无则 None）。
+
+    build_scene_groups 的返回单元。seg_indices 按时间顺序升序；
+    scene 为 null 表示该组是 location 连续性兜底组（无显式 Scene）。
+    """
+
+    seg_indices: list[int]
+    scene: SceneGroup | None = None
+
+
+@dataclass
 class SegmentRefAudio:
     """Standalone reference audio for MiniMax ``<Audio N>`` (index 0-based)."""
 
@@ -82,7 +138,56 @@ class SegmentPlan:
     reference_video_meta: dict = field(default_factory=dict)
     reference_video_start_frame: int = 0
     negative_prompt: str = ""
+    # 段唯一标识（timeline.segments[].id，SPA 里即镜头 uuid）。缓存指纹用它做
+    # 「镜头身份」隔离：不同项目/镜头即使 index+参数相同也不会互相命中旧缓存
+    # （修复「新项目空镜头生成出旧项目人物」）。老 timeline 无 id 时为空串，
+    # 指纹退化为按 index+参数匹配（向后兼容）。
+    id: str = ""
     source_clip: torch.Tensor | None = None
+    # 全局资产库（Phase B）：本段注入的角色/场景资产图（世界锚点）。
+    # 由 gen_timeline 按 seg.castIds/castId（或全局默认）解析后挂载。
+    # V1.6-B：多角色 cast 集合 → 列表（@命中 cast 并入去重）；旧单值 castId
+    # 数据迁移为单元素列表。执行器逐一注入角色资产图（天然支持多角色同框）。
+    cast_assets: list[GlobalAsset] = field(default_factory=list)
+    location_asset: GlobalAsset | None = None
+    # 场景归属（Scene Manager）：本段所属 SceneGroup.id（timeline.scenes 里）。
+    # 空字符串 = 未显式归属，导出时按 location 连续性兜底分组。
+    # 非空时：导出按 scene 分组；资产解析优先用该场景素材组（Scene Asset Group）。
+    scene_id: str = ""
+    # 场景素材组附加资产（Scene Asset Group 扩展）：本段所属场景素材组里的
+    # 道具 prop / 风格参考 style（不占用 cast/location 槽位），executor 注入时
+    # 作为额外 ref_image 追加（参考图槽位未满时）。优先级低于段手动 refs。
+    extra_assets: list[GlobalAsset] = field(default_factory=list)
+    # 状态跟踪（阶段 C）：本镜结束后应落地的「状态变更」描述（动作/地点/时间/情绪）。
+    # 由用户在前端卡片填写（可选）；executor 用它更新 current_state，供下一镜拼接前缀。
+    state_change: str = ""
+    # 智能尾帧选择（待办④，段级覆盖）：三态——None=跟随全局开关、True=强制开启、
+    # False=强制关闭。开启时参考图路径从上一段末尾几帧挑锐度最佳帧作续接锚点。
+    smart_tail: bool | None = None
+    # 阶段 D 镜头路由（智能导演）："auto"=按提示词关键词自动判定（Ref2VA/FL2VA）、
+    # "ref2va"=强制走参考图状态驱动、"fl2va"=强制走首尾帧硬锁。auto 时由 gen_timeline
+    # 用关键词路由函数解析成最终 task_key；手动覆盖优先。
+    continuity_mode: str = "auto"
+    # 里程碑 B：关键镜头标记（二级一致性检测）——三态覆盖（前端下拉）：
+    # None/"auto"=有角色/场景资产注入即自动检测、True=强制检测、False=跳过。
+    # 由 gen_timeline 解析 seg.consistencyCheck（undefined/"auto"/true/false）后挂载。
+    consistency_check: bool | None = None
+    # V1.2.7：Prompt 媒体引用标签（<picture>名</picture>）匹配到的资产图。
+    # 用户在提示词里显式引用资产（角色/地点/道具/风格），gen_timeline 解析标签、
+    # 在「场景素材组 + 全局资产」池里按名字匹配后挂载；executor 注入时作为
+    # 额外 ref_image 追加（复用资产注入管线），并生成 <Picture N> 官方说明。
+    # 已自动注入的 cast/location（cast_asset/location_asset）与场景素材组
+    # extra_assets 会在 gen_timeline 去重，避免重复槽位。
+    tag_assets: list[GlobalAsset] = field(default_factory=list)
+
+    @property
+    def cast_asset(self) -> GlobalAsset | None:
+        """V1.6-B 兼容 getter：旧代码（缓存指纹/一致性检测）读单值时返回首元素。
+
+        真相源是 ``cast_assets`` 列表；此属性只为向后兼容（旧读单值路径）
+        与旧 SegmentPlan 对象（无 cast_assets 字段）提供统一的单值视图。
+        """
+        return self.cast_assets[0] if self.cast_assets else None
 
     @property
     def frame_count(self) -> int:
@@ -109,11 +214,50 @@ class DirectorPlan:
     raw: dict
     source_total_frames: int = 0
     export_max_frames: int = 0
-    export_mode: str = "all"  # "all" | "segments"
+    # Scene Manager（一级对象）：timeline.scenes 解析结果。
+    # 每个场景拥有独立素材组（角色/场景/道具/风格参考），段按 scene_id 归属；
+    # 导出/Ref2VA 参考图/状态跟踪/Qwen 检测/镜头续接都以场景为共同单位。
+    scenes: list[SceneGroup] = field(default_factory=list)
+    # 导出模式（Movie → Scene → Shot 三级）：
+    #   "all"      = 全片导出（内存合并，旧行为，适合 ≤1~2 分钟短片）
+    #   "segments" = 分镜导出（Shot）：每镜独立 clip，可单独重跑/调试
+    #   "scene"    = 场景导出（Scene）★推荐：按场景流式合并（场景内接缝优化），
+    #                输出 SceneNN.mp4；内存峰值 ≈ 单场景大小，与段数解耦
+    #   "movie"    = 全片导出（Movie）：场景合并后 ffmpeg 直拼场景 → Movie.mp4，
+    #                几乎不占合并内存
+    # "stream"/"streaming" 是 "movie" 的旧别名，保持兼容。
+    export_mode: str = "scene"
     run_indices: frozenset[int] | None = None  # None = run all segments
     continuity_enabled: bool = False
     continuity_overlap_frames: int = 0
     global_ref_audios: list[SegmentRefAudio] = field(default_factory=list)
+    # fl2v 自动交接镜的续接方式：参考图续接 ("image") | 从视频续接 ("video")。
+    # "image" → ref_image_0 = 上段尾帧；"video" → ref_video_0 = 上段整段视频。
+    handoff_mode: str = "image"
+    # r2v 自动续接（ref2va 模型专用）：开启后，r2v 段无显式参考媒体时，
+    # 自动用上一段整段视频 (ref_video_0 = prev_tail) 续接，完整继承运动轨迹。
+    r2v_auto_handoff: bool = False
+    # 全局资产库总开关（Phase B，与「自动续接上段」独立）：字段缺失默认开启。
+    # 开启后，r2v 段按其 cast_asset/location_asset 自动注入角色/场景资产图。
+    global_assets_enabled: bool = True
+    # 状态跟踪总开关（阶段 C）：字段缺失默认开启，与「自动续接上段」「全局资产库」独立。
+    # 开启后，每镜 prompt 前自动拼接上一镜累计的 current_state 前缀。
+    state_tracking_enabled: bool = True
+    # 智能尾帧选择总开关（待办④）：字段缺失默认开启，与其它开关独立。
+    # 开启后，参考图路径（r2v 图片锚点 / fl2v 参考图续接）自动挑末尾最佳帧；
+    # 段级 seg.smart_tail 可单独覆盖本开关。
+    smart_tail_enabled: bool = True
+    # Qwen3-VL 视觉反馈总开关（待办⑤，AI 导演判断）：默认关闭。
+    # 开启后，段生成完在「段间清理显存」窗口内跑 Qwen3-VL 反馈（状态提取等）。
+    # 字段缺失默认关（与 r2v/资产等"缺失默认开"不同——Qwen3-VL 有额外显存/模型成本，
+    # 必须用户显式开启）。
+    qwen_vl_enabled: bool = False
+    # Qwen3-VL 反馈级别：1=状态提取（含 character_state/camera_state）、
+    # 2=+一致性检测（关键镜头）、3=+失败重跑（Qwen+规则双确认）。默认 1。
+    qwen_vl_level: int = 1
+    # 关键镜头标记总开关（二级一致性检测用）：开启后，主角首次出现/场景切换/
+    # 重要剧情节点镜头才跑一致性检测（勿全量检查，成本高）。默认关闭。
+    qwen_vl_key_segments: bool = False
 
     @property
     def segment_count(self) -> int:
@@ -202,6 +346,39 @@ def _load_refs(ref_list: list[dict]) -> list[SegmentRef]:
         if tensor is not None:
             refs.append(SegmentRef(index=index, tensor=tensor))
     return sorted(refs, key=lambda r: r.index)
+
+
+_BAD_ASSET_NAME = "[object File]"
+
+
+def _clean_asset_name(item: dict) -> str:
+    """清洗资产名称：拒绝前端误存的 "[object File]" 占位，空名回退文件名。"""
+    name = str(item.get("name") or "").strip()
+    if name and name != _BAD_ASSET_NAME:
+        return name
+    img = str(item.get("imageFile") or item.get("image") or "").replace("\\", "/").split("/")[-1]
+    return img or ""
+
+
+def _load_global_assets(asset_list: list[dict], kind: str) -> list[GlobalAsset]:
+    """Load global asset library entries (cast / location) from timeline.assets."""
+    assets: list[GlobalAsset] = []
+    for item in asset_list or []:
+        if not isinstance(item, dict):
+            continue
+        aid = str(item.get("id") or "").strip()
+        if not aid:
+            continue
+        assets.append(
+            GlobalAsset(
+                id=aid,
+                name=_clean_asset_name(item),
+                kind=kind,
+                tensor=load_reference_tensor(item),
+                image_file=str(item.get("imageFile") or item.get("image") or "").replace("\\", "/"),
+            )
+        )
+    return assets
 
 
 def load_reference_audio_item(item: dict) -> dict | None:
@@ -358,10 +535,64 @@ def _resolve_export_total(timeline: dict, source_total: int) -> int:
 
 
 def _resolve_export_mode(output_block: dict) -> str:
-    mode = str(output_block.get("exportMode") or output_block.get("export_mode") or "all").lower()
-    if mode in ("segments", "segment", "per_segment", "by_segment"):
+    mode = str(output_block.get("exportMode") or output_block.get("export_mode") or "scene").lower()
+    if mode in ("segments", "segment", "per_segment", "by_segment", "shot", "shots"):
         return "segments"
+    if mode in ("scene", "scenes", "by_scene", "per_scene"):
+        return "scene"
+    if mode in ("stream", "streaming", "mp4", "files", "per_file", "video_files",
+                "movie", "full", "full_movie"):
+        return "movie"
     return "all"
+
+
+def build_scene_groups(
+    segments: list["SegmentPlan"],
+    scenes: list["SceneGroup"] | None = None,
+) -> list[SceneGroupPlan]:
+    """把连续段按「场景」分组（Scene Manager 一级对象）。
+
+    分组规则（sceneId 显式优先 + location 连续性兜底）：
+      1. 段带 scene_id 且能在 scenes 里找到对应 SceneGroup → 按显式场景分组。
+         同一显式场景的段即使跨地点/跨时间也归同组，组序按时间线出现顺序。
+      2. 未显式归属场景的段 → 相邻段 location_asset 相同归为同一场景组。
+      3. 完全无 location 信息的段并为一组。
+    保持时间顺序；返回 SceneGroupPlan 列表（seg_indices + 对应 scene 元数据，
+    location 兜底组的 scene 为 None）。
+
+    场景是导演系统的一等公民（Movie → Scene → Shot）。显式场景由 Scene Manager
+    手动创建（timeline.scenes）；location 兜底用于旧时间线 / 未归属段，等价旧的
+    「同地点连续拍摄归一场戏」行为。
+    """
+    scenes_by_id = {s.id: s for s in (scenes or [])}
+
+    def _key(seg: "SegmentPlan") -> tuple[str, str]:
+        sid = (seg.scene_id or "").strip()
+        if sid and sid in scenes_by_id:
+            return ("scene", sid)
+        loc = getattr(seg, "location_asset", None)
+        loc_name = (getattr(loc, "name", "") or "").strip()
+        return ("loc", loc_name)
+
+    def _close_group(indices: list[int], key: tuple[str, str] | None) -> SceneGroupPlan:
+        scene = scenes_by_id.get(key[1]) if key and key[0] == "scene" else None
+        return SceneGroupPlan(seg_indices=list(indices), scene=scene)
+
+    groups: list[SceneGroupPlan] = []
+    cur_indices: list[int] = []
+    cur_key: tuple[str, str] | None = None
+    for seg in segments:
+        key = _key(seg)
+        if cur_key is not None and key != cur_key:
+            groups.append(_close_group(cur_indices, cur_key))
+            cur_indices = []
+        cur_indices.append(seg.index)
+        cur_key = key
+    if cur_indices:
+        groups.append(_close_group(cur_indices, cur_key))
+    if not groups:
+        groups.append(SceneGroupPlan(seg_indices=[s.index for s in segments]))
+    return groups
 
 
 def _clip_segment_ranges(
@@ -585,7 +816,15 @@ def build_director_plan(
             seg_prompt = (seg_data.get("prompt") or "").strip() or prompt
             seg_task = seg_data.get("taskType") or seg_data.get("task_type") or task_type
             # Segment mode: only this segment's refs — never inherit global.refs / refAudios.
-            seg_refs = _load_refs(seg_data.get("refs") or [])
+            try:
+                seg_refs = _load_refs(seg_data.get("refs") or [])
+            except Exception as _ref_exc:
+                # #93：plan 阶段参考图加载失败（坏图/缺文件）带段号抛错。
+                # 前端 failedShotIds 正则 (Segment N) 据此定位真实失败镜头，
+                # 而不是落到上一次运行残留的 failed 状态上（s2 坏图错标 s1）。
+                raise ValueError(
+                    f"Segment {idx + 1} reference image could not be loaded: {_ref_exc}"
+                ) from _ref_exc
             seg_ref_audios = _load_ref_audios(
                 seg_data.get("refAudios") or seg_data.get("ref_audios") or []
             )
@@ -775,7 +1014,12 @@ def plan_summary(plan: DirectorPlan) -> str:
             f"Export cap: {plan.total_frames}/{plan.source_total_frames} frames "
             f"(max {plan.export_max_frames})"
         )
-    export_label = "分段导出" if plan.export_mode == "segments" else "全部导出"
+    export_label = {
+        "all": "全片导出（内存合并）",
+        "segments": "分镜导出（Shot）",
+        "scene": "场景导出（Scene）",
+        "movie": "全片导出（Movie，流式）",
+    }.get(plan.export_mode, plan.export_mode)
     lines.append(f"Export mode: {export_label}")
     if plan.continuity_enabled:
         from .segment_continuity import resolve_continuity_lock_pixels

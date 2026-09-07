@@ -68,17 +68,13 @@ Vue3 + TS storyboard workbench SPA (projects / timeline / shot cards / task cent
 
 8. **Frontend SPA workbench** (`frontend/`, Vue3 + TS + Vite) — project management, Timeline main view, location library, shot cards, prompt-section editor with `@`-asset autocomplete, task center (queue separation, real stage, ETA, seed replay), generation version archive, Voice Cast global panel. 50 source files + 32 test files.
 
-9. **Engineering quality** — 60 backend pytest files (`director/tests`) + frontend vitest; dual-directory (dev/deploy) md5-sync discipline; full `CHANGELOG.md`; many `*_PLAN.md` design docs recording *why* each module was built that way.
+9. **Engineering quality** — 60 backend pytest files (`director/tests`) + frontend vitest; dual-directory (dev/deploy) md5-sync discipline; full `CHANGELOG.md`; concise design docs (camera rules / prompt compiler / TTS voice cast / SPA blueprint) recording the key architecture decisions.
 
 ---
 
-## Verified demo projects (run end-to-end on a local GPU)
+## Validation
 
-| Project | What it validated |
-|---|---|
-| 《山雨客栈》 (Mountain Rain Inn) | Script import → rule-based shot split → entity matching → **12-shot full episode** golden path |
-| 《第七号站台》 (Platform Seven) | 11-shot UI walkthrough (asset library / inheritance / autosave / per-shot automation) |
-| 《吐槽成真》 (The Roast Comes True) | 4-shot A/B of director rules v2 + prompt constraint layer |
+This fork has been exercised **end-to-end on real scripts** in several forms: 4-shot A/B of director rules v2 + the prompt constraint layer, an 11-shot UI walkthrough, and a **12-shot full-episode golden path** (script import → rule-based shot split → entity matching → per-shot generation → voice dub → final cut). Acceptance-run logs and per-shot review checklists are kept locally and are not published in this repo.
 
 > Demo videos are being produced and will be linked here (hosted externally, not stored in this repo).
 
@@ -174,7 +170,6 @@ Model weights, example workflows and upstream ecosystem: see the **[upstream REA
 | [PROMPT_COMPILER_V1.md](PROMPT_COMPILER_V1.md) | Constraint-layer design (8 layers) |
 | [TTS_VOICE_CAST_PLAN.md](TTS_VOICE_CAST_PLAN.md) | Sound-director architecture (H3 + TTS + ducking) |
 | [FRONTEND_SPA_BLUEPRINT.md](FRONTEND_SPA_BLUEPRINT.md) | SPA storyboard workbench blueprint |
-| [V17_PLAN.md](V17_PLAN.md) | Script → production-plan pipeline plan |
 
 ---
 

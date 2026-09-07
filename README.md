@@ -107,17 +107,13 @@ SPA 分镜工作台（Vue3 + TS）：项目 / 时间线 / 镜头卡片 / 任务�
 ### 9. 工程质量
 - 后端 pytest **60 个测试文件**（`director/tests`）+ 前端 vitest；全链路回归、双目录（开发 / 部署）md5 同步校验。
 - `CHANGELOG.md`：全量改动索引（已到 #650+）；`OPERATION_GUIDE.md`：可发给任何 AI 助手的完整操作手册。
-- 大量设计文档（`*_PLAN.md`）沉淀了每个模块「为什么这么做」的决策过程。
+- 设计文档沉淀了关键架构决策（运镜规则 / 生成约束层 / 声音导演层 / SPA 蓝图），导航见「七、文档导航」。
 
 ---
 
-## 三、验证项目（均在本机真实跑通）
+## 三、验证情况
 
-| 项目 | 验证内容 |
-|---|---|
-| 《山雨客栈》 | 剧本导入 → 规则拆镜 → 实体匹配 → **12 镜实拍成片**全链路 Golden Path |
-| 《第七号站台》 | 11 镜走查短片：素材库 / 继承 / 自动保存 / 逐镜自动化 UI 验收 |
-| 《吐槽成真》 | 4 镜 A/B：导演规则 v2（运镜 / 画风 / 节奏）与生成约束层实机对比 |
+本项目在**真实剧本**上做过多种形态的端到端验证：4 镜级 A/B（导演规则 v2 与生成约束层的实机对比）、11 镜级 UI 全流程走查、**12 镜级全片 Golden Path**（剧本导入 → 规则拆镜 → 实体匹配 → 逐镜生成 → 配音成片）。逐镜验收过程与走查清单为本地开发记录，未随仓库公开。
 
 > 演示视频正在制作中，完成后将在此外链 B 站。（仓库不放视频文件）
 
@@ -243,9 +239,6 @@ python -m pytest director/tests -q
 | [PROMPT_COMPILER_V1.md](PROMPT_COMPILER_V1.md) | 生成约束层（8 层约束）设计文档 |
 | [TTS_VOICE_CAST_PLAN.md](TTS_VOICE_CAST_PLAN.md) | 声音导演层架构（H3 + TTS + ducking） |
 | [FRONTEND_SPA_BLUEPRINT.md](FRONTEND_SPA_BLUEPRINT.md) | 前端 SPA 分镜工作台设计蓝图 |
-| [V17_PLAN.md](V17_PLAN.md) | 剧本 → 制作计划全链路（导演层核心规划） |
-| [QWEN3VL_FEEDBACK_PLAN.md](QWEN3VL_FEEDBACK_PLAN.md) | Qwen3-VL 视觉反馈闭环 |
-| [LATENT_CHAINING_FIX.md](LATENT_CHAINING_FIX.md) | MiniMax H3 无缝衔接正确机制 |
 
 ---
 
